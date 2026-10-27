@@ -1,0 +1,9 @@
+[
+  ".github/workflows/tests.yml",
+  ".gitignore",
+  "LICENSE",
+  "README.md",
+  "public-files.json",
+  "tests/test_public_tree.py",
+  "tools/check_public_tree.py"
+]
