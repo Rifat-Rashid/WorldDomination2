@@ -1,27 +1,102 @@
 # World Domination II — Python reconstruction
 
-An unofficial, work-in-progress Python reconstruction of World Domination II.
+An unofficial standalone Python reconstruction of the Flash strategy game.
+The original splash screen, setup menu, map, city artwork and gameplay HUD run
+without Flash, a browser or the original SWF.
 
-This initial checkpoint establishes the public repository workflow and automated
-publication checks. The runnable application and reviewed runtime assets are being
-prepared on `feat/original-gameplay-integration`; this checkpoint does not yet
-contain an installable game.
+This is a partial reconstruction. Original gameplay rules and AI run through
+translated Python classes; interface restoration is still in progress.
 
-The reconstruction preserves the existing game rules while restoring the original
-splash, setup menu and gameplay interface. Full animation and visual parity are
-not claimed.
+## Install and launch
 
-## Development checks
+Use Python 3.12 or newer on Windows or Linux:
 
 ```sh
-python tools/check_public_tree.py
-python -m unittest discover -s tests -p "test_public_tree.py"
+python -m pip install -r requirements.txt
+python run_game.py
 ```
 
-## Rights and attribution
+Click the title screen, choose your difficulty, nation color, building theme and
+one to four opponents, then click **Start Game**. The selected configuration
+carries into the original gameplay interface within the same window.
 
-This project is unofficial and is not endorsed by the original game's creators.
-The existing repository license does not grant rights to third-party game artwork,
-music, fonts or translated game content. Any packaged third-party content will be
-identified separately; its age or noncommercial use does not imply public-domain
-status or redistribution permission.
+Currently connected original controls:
+
+- **Resources** and **Mass Media** open their original action panels.
+- **Accept** fills an action slot; **Cancel** closes an unaccepted panel.
+- Fill both slots, then click **Confirm** below the map to resolve the turn.
+- Original Music and Sound switches toggle playback independently.
+- **P** pauses presentation and audio; **Escape** closes the window.
+
+Other original action buttons, stock selection, action-slot cancellation, help,
+fullscreen and end-game workflows are not connected yet. Combat resolves through
+the existing synchronous engine; original timed battle playback is unfinished.
+Presentation uses a 24 Hz logical clock and cached native surfaces. New scene
+states and unsupported effects can take longer to render on some systems.
+
+For the broader playable desktop controls:
+
+```sh
+python run_game.py --legacy-ui
+```
+
+In that mode choose actions on the right, click a target city, queue two actions
+and press **Resolve turn** or Enter. **Clear** cancels queued actions. Arrow
+controls select equipment, technology, budgets and diplomacy options. Prepared
+attacks use a carrier first and a payload on the following turn. The desktop
+currently supports one target per carrier attack.
+
+`python run_original_menu.py` is an alternate launcher for the original flow.
+Use `--seed 42` with either mode for reproducible Python sessions; the legacy
+mode also accepts `--difficulty 0`, `1` or `2`.
+
+The original SVG renderer remains available with `--svg-renderer`. Screenshot
+exports use that reference path; the live window uses the cached compositor.
+
+## Rendering performance
+
+In an off-screen Windows/Python 3.14 benchmark (12 frames per scene), median frame
+work including timeline callbacks changed as follows:
+
+| Scene | SVG path | Cached path |
+| --- | ---: | ---: |
+| Splash | 530 ms | 4.5 ms |
+| Setup | 506 ms | 5.2 ms |
+| Animated gameplay | 597 ms | 11.5 ms |
+
+Dispatching a gameplay-panel input and producing the resulting frame fell from
+about 605 ms to 14 ms after warm-up. These measurements exclude window pacing and
+are not hardware input-latency measurements. A cold scene still takes about one
+second to populate caches. Surface storage is bounded to 64 MiB, in addition to
+the original asset definitions. Actual performance depends on hardware.
+
+## Validation
+
+```sh
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+python run_game.py --smoke --screenshot smoke.png
+python run_game.py --legacy-ui --smoke --screenshot legacy-smoke.png
+python -m wd2.game --turns 10 --seed 42
+```
+
+The original smoke resolves Resources and Mass Media for one turn and exports an
+800 x 600 screenshot plus JSON state. Screenshot mode needs no display or audio
+device. Automated tests cover setup handoff, HUD/action bindings, real window
+event dispatch, mixer playback, deterministic simulations and asset integrity.
+Optional checks against source movies and external-player reference captures
+explicitly skip in this distribution because those fixtures are not included.
+
+The game loads converted timeline instructions, individual vector artwork,
+registered city images, fonts and audio from `assets/`. It does not depend on
+development exports. The original 800 x 600 hierarchy and 24 Hz logical clock
+are preserved, but animation, shading and font rendering still differ from Flash.
+Pixel-perfect fidelity is not claimed.
+
+## Third-party materials
+
+This project is unofficial and is not affiliated with the original game creators.
+The repository's code license does not establish permission to redistribute
+third-party game assets or translated game content. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the distinction and unresolved
+rights status.
