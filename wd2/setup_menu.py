@@ -135,7 +135,7 @@ class SetupMenu:
         self.game, self.gameplay = game, gameplay
         self.rt, self.host, self.tree, self.root = game.rt, host, tree, host.root
         self.model, self.menu_model, self.presenter = game.model, menu_model, presenter
-        self.renderer = MenuRenderer(self.document, CachedAssets(), host)
+        self.renderer = MenuRenderer(self.document, self.renderer.assets, host)
         self.hovered = None
         self.last_error = None
         return game
@@ -156,6 +156,13 @@ class SetupMenu:
 
     def png(self):
         return self.renderer.png(self.tree)
+
+    def surface(self, pygame):
+        from .surface_renderer import SurfaceRenderer
+        cached = getattr(self, '_surface_renderer', None)
+        if cached is None or cached.renderer is not self.renderer:
+            self._surface_renderer = SurfaceRenderer(self.renderer, pygame)
+        return self._surface_renderer.frame(self.tree)
 
     def control_at(self, pos):
         if self.gameplay:
@@ -220,6 +227,7 @@ def main():
     parser.add_argument('--splash', action='store_true', help='Capture the initialized title splash')
     parser.add_argument('--start-game', action='store_true', help='Start after selecting the first opponent')
     parser.add_argument('--smoke', action='store_true', help='Start and resolve one turn through original controls')
+    parser.add_argument('--svg-renderer', action='store_true', help='Use the uncached SVG window renderer')
     args = parser.parse_args()
     menu = SetupMenu(args.seed)
     if (args.screenshot and not args.splash) or args.select_first or args.start_game or args.smoke:
@@ -234,10 +242,10 @@ def main():
     if args.screenshot:
         menu.save(args.screenshot)
         return
-    run_window(menu)
+    run_window(menu, cached=not args.svg_renderer)
 
 
-def run_window(menu):
+def run_window(menu, cached=True):
     import pygame
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
@@ -268,7 +276,8 @@ def run_window(menu):
                 elif event.type == pygame.MOUSEMOTION:
                     menu.motion(event.pos)
             menu.host.clock.step(ticks)
-            screen.blit(pygame.image.load(io.BytesIO(menu.png())), (0, 0))
+            frame = menu.surface(pygame) if cached else pygame.image.load(io.BytesIO(menu.png()))
+            screen.blit(frame, (0, 0))
             pygame.display.flip()
     finally:
         menu.audio.close()

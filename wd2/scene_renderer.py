@@ -29,6 +29,7 @@ class SVGAssets:
     """Normalize export registration back to the original local coordinate origin."""
     def __init__(self, root=ROOT):
         self.root = root
+        self.bounds_cache = {}
         self.city_directory = root / 'assets/cities'
         manifest = self.city_directory / 'manifest.json'
         self.cities = {s['character_id']: s for s in json.loads(manifest.read_text())['symbols'].values()} if manifest.exists() else {}
@@ -67,6 +68,8 @@ class SVGAssets:
         matrix = tuple(float(v) for v in match[1].split(',')) if match else ()
         if len(matrix) != 6 or matrix[:4] != (1, 0, 0, 1):
             raise ValueError(f'Unexpected export registration: {path}')
+        self.bounds_cache[symbol.character_id] = (-matrix[4], -matrix[5],
+            float(svg.get('width').removesuffix('px')), float(svg.get('height').removesuffix('px')))
         # Only the outer bounding-box translation belongs to the exporter.
         # Inner transforms (e.g. text glyph matrices) remain untouched.
         group.attrib.pop('transform')
@@ -87,6 +90,11 @@ class SVGAssets:
                     e.set(key, value)
         return container
 
+    def bounds(self, symbol):
+        if symbol.character_id not in self.bounds_cache:
+            self.load(symbol)
+        return self.bounds_cache[symbol.character_id]
+
 
 class SceneRenderer:
     def __init__(self, assets=None):
@@ -102,8 +110,9 @@ class SceneRenderer:
         svg = element('svg', {'width': str(size[0]), 'height': str(size[1]),
                               'viewBox': f'0 0 {size[0]} {size[1]}'})
         self.defs = ET.SubElement(svg, f'{{{SVG}}}defs')
-        svg.append(element('rect', {'width': '100%', 'height': '100%',
-                                   'fill': '#%02x%02x%02x' % tuple(background)}))
+        if background is not None:
+            svg.append(element('rect', {'width': '100%', 'height': '100%',
+                                       'fill': '#%02x%02x%02x' % tuple(background)}))
         svg.append(self._node(root, '_root'))
         self.report['unique_leaf_assets'] = len(self._loaded)
         return ET.tostring(svg, encoding='unicode')

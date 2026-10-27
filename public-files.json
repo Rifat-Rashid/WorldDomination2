@@ -2234,6 +2234,7 @@
   "tests/test_runtime.py",
   "tests/test_runtime_assets.py",
   "tests/test_setup_menu.py",
+  "tests/test_surface_renderer.py",
   "tools/check_public_tree.py",
   "wd2/__init__.py",
   "wd2/city_layer.py",
@@ -2648,6 +2649,7 @@
   "wd2/scene_data.py",
   "wd2/scene_renderer.py",
   "wd2/setup_menu.py",
+  "wd2/surface_renderer.py",
   "wd2/swf_bits.py",
   "wd2/swf_scene.py"
 ]

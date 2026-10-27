@@ -31,7 +31,8 @@ Currently connected original controls:
 Other original action buttons, stock selection, action-slot cancellation, help,
 fullscreen and end-game workflows are not connected yet. Combat resolves through
 the existing synchronous engine; original timed battle playback is unfinished.
-The renderer also runs below the original 24 FPS on some systems.
+Presentation uses a 24 Hz logical clock and cached native surfaces. New scene
+states and unsupported effects can take longer to render on some systems.
 
 For the broader playable desktop controls:
 
@@ -48,6 +49,26 @@ currently supports one target per carrier attack.
 `python run_original_menu.py` is an alternate launcher for the original flow.
 Use `--seed 42` with either mode for reproducible Python sessions; the legacy
 mode also accepts `--difficulty 0`, `1` or `2`.
+
+The original SVG renderer remains available with `--svg-renderer`. Screenshot
+exports use that reference path; the live window uses the cached compositor.
+
+## Rendering performance
+
+In an off-screen Windows/Python 3.14 benchmark (12 frames per scene), median frame
+work including timeline callbacks changed as follows:
+
+| Scene | SVG path | Cached path |
+| --- | ---: | ---: |
+| Splash | 530 ms | 4.5 ms |
+| Setup | 506 ms | 5.2 ms |
+| Animated gameplay | 597 ms | 11.5 ms |
+
+Dispatching a gameplay-panel input and producing the resulting frame fell from
+about 605 ms to 14 ms after warm-up. These measurements exclude window pacing and
+are not hardware input-latency measurements. A cold scene still takes about one
+second to populate caches. Surface storage is bounded to 64 MiB, in addition to
+the original asset definitions. Actual performance depends on hardware.
 
 ## Validation
 

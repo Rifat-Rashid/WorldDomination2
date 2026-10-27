@@ -2,15 +2,14 @@
 import base64
 import io
 import math
-import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw, ImageFont
 
 from .swf_bits import Bits, records
 from .resources import asset_directory
 from .runtime import get, U
-from .scene_renderer import SceneRenderer, element, SVG, XLINK
-from .swf_scene import ROOT, Reader
+from .scene_renderer import SceneRenderer, element, XLINK
+from .swf_scene import Reader
 
 
 def font_families(document):
@@ -164,15 +163,9 @@ class MenuRenderer(SceneRenderer):
         for leaf in node.walk():
             if leaf.symbol.timeline:
                 continue
-            if leaf.symbol.kind in (2, 22, 32, 83):
-                path = asset_directory('shapes') / f'{leaf.character_id}.svg'
-            else:
+            if leaf.symbol.kind not in (2, 22, 32, 83):
                 continue
-            svg = ET.parse(path).getroot()
-            g = svg.find(f'{{{SVG}}}g')
-            matrix = [float(v) for v in g.get('transform').removeprefix('matrix(').removesuffix(')').split(',')]
-            x, y = -matrix[4], -matrix[5]
-            w, h = float(svg.get('width').removesuffix('px')), float(svg.get('height').removesuffix('px'))
+            x, y, w, h = self.assets.bounds(leaf.symbol)
             points.extend(leaf.world_matrix.point(px, py) for px, py in ((x,y),(x+w,y),(x,y+h),(x+w,y+h)))
         if not points:
             return None
