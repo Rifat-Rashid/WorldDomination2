@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_reviewed_runtime_assets_are_complete_and_match_manifest():
     for name, digest in json.loads((ROOT / 'assets/runtime/manifest.json').read_text()).items():
-        assert hashlib.sha256((ROOT / 'assets' / name).read_bytes()).hexdigest() == digest
+        data = (ROOT / 'assets' / name).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == digest, name
+        if name.endswith('.svg'):
+            assert b'\r\n' not in data, f'Noncanonical SVG newlines: {name}'
     atlas = json.loads((ROOT / 'assets/cities/manifest.json').read_text())
     assert len(atlas['symbols']) == 5
     for symbol in atlas['symbols'].values():
