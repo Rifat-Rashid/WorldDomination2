@@ -126,6 +126,9 @@ def test_invalid_mask_is_empty_coverage_and_does_not_expose_masked_content(displ
     image = compare(cache.frame(root,(32,24)),base.png(root,(32,24)))
     assert image.getpixel((2,2)) == (0,0,0)
     assert image.getpixel((14,2)) == (255,0,0)
+    root.children[1].clip_depth = 3
+    image = compare(cache.frame(root,(32,24)),base.png(root,(32,24)))
+    assert image.getpixel((14,2)) == (0,0,0)
 
 
 def test_original_city_nan_transform_does_not_crash_or_change_gameplay(display):

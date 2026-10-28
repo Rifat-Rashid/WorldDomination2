@@ -78,7 +78,7 @@ class SurfaceRenderer:
         if not node.visible:
             return ('hidden',)
         if not self.valid_transform(node, node.matrix):
-            return ('invalid_transform', node.character_id)
+            return ('invalid_transform', node.character_id, node.clip_depth)
         text = getattr(node, 'as2_text', {})
         fmt = text.get('_textFormat', U)
         text_key = ('text' in text, str(text.get('text', '')), text.get('textColor', U),
