@@ -81,7 +81,9 @@ def test_original_controls_accept_actions_resolve_once_and_update_hud():
     assert get(menu.gameplay.interface, 'turn') == 1
     assert get(menu.gameplay.interface, 'activePlayer') == 0
     assert '$ 106.000.000' in get(get(menu.gameplay.interface, 'statTxt'), 'text')
-    assert 'TURN 1' in get(get(menu.gameplay.interface, 'shortMSG_textField'), 'text')
+    messages = get(get(menu.gameplay.interface, 'shortMSG_textField'), 'text')
+    assert 'TURN 1' not in messages
+    assert all(str(get(msg,'_msg')) in messages for msg in get(game.human,'shortMSG_arr') if truth(get(msg,'_msg')))
     menu.press('btn46')  # Disabled/empty actions cannot resolve twice.
     assert get(game.model, 'turn') == 1
     before, rng = game.snapshot(), game.rt.rng.getstate()

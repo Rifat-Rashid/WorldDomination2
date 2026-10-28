@@ -78,7 +78,7 @@ def build_session(menu):
     register_all(rt)
     headless = HeadlessHost(rt)
     tree = menu.document.root(10)
-    host = MovieClipHost(rt, tree)
+    host = MovieClipHost(rt, tree, isolate_frame_rng=True)
     for node in tree.walk():
         node.playing = False
     rt.globals.set('TextFormat', NativeClass(lambda: obj()))
@@ -138,6 +138,13 @@ class OriginalGameplay:
         self.interface = get(host.root, 'interfaceMC')
         self.battle = get(host.root, 'battleMC')
         self.city_clips = {}
+        from .setup_menu import reachable
+        city_symbols = {host.linkages[get(city,'citySet')]
+                        for player in game.players for city in get(player,'cityArr')}
+        host.script_symbols.update(reachable(tree, [4658,*city_symbols]))
+        for node in self.interface.node.walk():
+            node.playing = bool(node.symbol.timeline)
+        host.enter(self.interface.node)
         self.hud = self.rt.new('View_interface', self.interface)
         self.rt.globals.set('view_interface', self.hud)
         self.presenter = self.rt.new('Presenter_interface')
@@ -156,9 +163,6 @@ class OriginalGameplay:
         for name in ('introMovie', 'splashScreenMC', 'gameMenu', 'endGameMC', 'full_version_MC'):
             get(host.root, name).set('_visible', False)
         self.interface.set('_visible', True)
-        # Original help input: repeated index presses reach frame 10's reveal.
-        host.script_symbols.add(4124)
-        host.enter(self.interface.node)
         from .action_entry import ActionEntry
         self.actions = ActionEntry(self)
         self.refresh()
@@ -174,6 +178,9 @@ class OriginalGameplay:
                 or truth(get(self.game.human, 'diplomacyPendingArr')[0])):
             return
         owner = getattr(self, 'owner', None)
+        if owner and owner.interface_sequence:
+            owner.interface_sequence.cancel()
+            owner.interface_sequence = None
         if owner and owner.play_battles:
             from .battle_playback import PresentationSnapshot
             self.game.on_turn_results = lambda game: setattr(owner, '_battle_snapshot', PresentationSnapshot(game))

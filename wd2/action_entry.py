@@ -3,7 +3,7 @@
 The recovered presenters own action validation, costs and TurnAction creation.
 This boundary supplies pointer dispatch and presentation-only city bindings.
 """
-from .runtime import U, get, truth, number, obj
+from .runtime import U, get, truth, number, obj, ASFunction
 
 
 def control_path(node):
@@ -90,9 +90,6 @@ class ActionEntry:
         # City.size_and_frame or replay battle callbacks on presentation ticks.
         self.rt.call(self.source_update, self.presenter, [])
         get(self.scene.interface, 'btn46').set('onPress', self.scene.resolve)
-        messages = get(self.scene.interface, 'shortMSG_textField')
-        messages.set('text', f"TURN {get(self.model, 'turn')} | YOUR NATION: {get(self.human, 'playerColor')}\n"
-                     + str(get(messages, 'text')))
         self.sync_cities()
 
     def after_turn(self):
@@ -107,6 +104,8 @@ class ActionEntry:
 
     def sync_cities(self):
         from .original_gameplay import color_object
+        from .generated.View import f_16 as show_population, f_17 as hide_population
+        get(self.rt.globals,'view').set('currentViewType','interface')
         for player in self.game.players:
             for city in get(player, 'cityArr'):
                 cid = get(city, 'cityID')
@@ -114,6 +113,11 @@ class ActionEntry:
                 if clip is None:
                     continue
                 clip.set('onPress', lambda c=city: self.select_city(c))
+                self.rt.invoke(get(clip,'mc'),'gotoAndStop',get(get(get(city,'image'),'mc'),'_currentframe'))
+                if player is self.human:
+                    clip.set('population',get(city,'population'))
+                    clip.set('onRollOver',ASFunction(show_population))
+                    clip.set('onRollOut',ASFunction(hide_population))
                 selection = get(city, 'selectionObj')
                 icons = []
                 if truth(get(selection, 'attack')):
@@ -225,7 +229,7 @@ class ActionEntry:
 
     def control_at(self, pos, renderer):
         center = get(self.scene.interface, 'centerScreen').node
-        target_frames = {center.symbol.timeline.labels[name] for name in
+        target_frames = {1} | {center.symbol.timeline.labels[name] for name in
                          ('attack1', 'preAttack4', 'propaganda1')}
         for node in reversed(self.controls()):
             if node.parent is self.scene.battle.node and center.frame not in target_frames:

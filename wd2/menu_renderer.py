@@ -187,7 +187,7 @@ class MenuRenderer(SceneRenderer):
             image.save(stream, format='PNG')
             self.text_cache[key] = (width, height, 'data:image/png;base64,'+base64.b64encode(stream.getvalue()).decode('ascii'))
         width, height, href = self.text_cache[key]
-        group.append(element('image', {'x': str(field['bounds'][0]), 'y': str(field['bounds'][2]),
+        self.color_group(node,group).append(element('image', {'x': str(field['bounds'][0]), 'y': str(field['bounds'][2]),
             'width': str(width), 'height': str(height), f'{{{XLINK}}}href': href}))
         self.report['rendered_leaf_instances'] += 1
         return group

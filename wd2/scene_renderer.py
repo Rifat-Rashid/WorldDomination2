@@ -162,6 +162,22 @@ class SceneRenderer:
             self.report['unsupported'].append({'character_id': node.character_id,
                 'path': path, 'feature': feature})
 
+    def color_group(self, node, group):
+        if node.color == ColorTransform() or self._stencil:
+            return group
+        self._serial += 1
+        fid = f'color_{self._serial}'
+        filt = element('filter', {'id': fid, 'color-interpolation-filters': 'sRGB'})
+        transfer = element('feComponentTransfer')
+        for i, channel in enumerate('RGBA'):
+            transfer.append(element('feFunc'+channel, {'type': 'linear',
+                'slope': str(node.color.mult[i]), 'intercept': str(node.color.add[i]/255)}))
+        filt.append(transfer)
+        self.defs.append(filt)
+        colored = element('g', {'filter': f'url(#{fid})'})
+        group.append(colored)
+        return colored
+
     def _node(self, node, path):
         group = element('g', {'transform': node.matrix.svg()})
         if not node.visible:
@@ -175,20 +191,7 @@ class SceneRenderer:
         if node.symbol.timeline and node.symbol.timeline.actions.get(node.frame):
             self.report['unexecuted_scripts'].append({'path': path, 'character_id': node.character_id,
                 'frame': node.frame, 'offsets': node.symbol.timeline.actions.get(node.frame, [])})
-        if node.color != ColorTransform() and not self._stencil:
-            self._serial += 1
-            fid = f'color_{self._serial}'
-            filt = element('filter', {'id': fid, 'color-interpolation-filters': 'sRGB'})
-            transfer = element('feComponentTransfer')
-            for i, channel in enumerate('RGBA'):
-                transfer.append(element('feFunc'+channel, {'type': 'linear',
-                    'slope': str(node.color.mult[i]), 'intercept': str(node.color.add[i]/255)}))
-            filt.append(transfer)
-            self.defs.append(filt)
-            colored = element('g', {'filter': f'url(#{fid})'})
-            group.append(colored)
-        else:
-            colored = group
+        colored = self.color_group(node,group)
         for start, end, style in getattr(node, 'graphics', ()):
             width, color, alpha = style
             colored.append(element('path', {'d': f'M {start[0]} {start[1]} L {end[0]} {end[1]}',

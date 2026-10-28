@@ -1,6 +1,8 @@
 """ASObject adapter for the existing display tree; no headless host changes."""
 from dataclasses import replace
+from contextlib import contextmanager
 import math
+import random
 import re
 import weakref
 import html
@@ -211,8 +213,11 @@ class ClipObject(ASObject):
 
 
 class MovieClipHost:
-    def __init__(self, rt, root, script_symbols=()):
+    def __init__(self, rt, root, script_symbols=(), isolate_frame_rng=False):
         self.rt, self.tree = rt, root
+        self.isolate_frame_rng = isolate_frame_rng
+        self.visual_rng = random.Random()
+        self.visual_rng.setstate(rt.rng.getstate())
         self.class_bindings = {}
         self.objects = weakref.WeakValueDictionary()
         self.entered = weakref.WeakKeyDictionary()
@@ -304,7 +309,24 @@ class MovieClipHost:
                 self.timeline_sound(node)
             if node.character_id in self.script_symbols:
                 for _, fn in sorted(self.scripts.get((node.character_id, node.frame), [])):
-                    self.rt.call(fn, self.wrap(node), [])
+                    with self.presentation_randomness():
+                        self.rt.call(fn, self.wrap(node), [])
+
+    @contextmanager
+    def presentation_randomness(self):
+        if not self.isolate_frame_rng or self.rt.rng is self.visual_rng:
+            yield
+            return
+        previous = self.rt.rng
+        math_object = get(self.rt.globals,'Math')
+        previous_random = get(math_object,'random')
+        self.rt.rng = self.visual_rng
+        math_object.set('random',self.visual_rng.random)
+        try:
+            yield
+        finally:
+            self.rt.rng = previous
+            math_object.set('random',previous_random)
 
     def goto(self, node, target, playing):
         timeline = node.symbol.timeline
@@ -342,6 +364,10 @@ class MovieClipHost:
         return self.rt.call(fn, target, []) if fn is not U else U
 
     def frame(self):
+        with self.presentation_randomness():
+            self._frame()
+
+    def _frame(self):
         existing = list(self.tree.walk())
         # Stable preorder callbacks, even for stopped timelines; detached nodes skip.
         for node in existing:
