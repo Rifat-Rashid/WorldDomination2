@@ -202,9 +202,7 @@ class ActionEntry:
             for node in root.walk():
                 if visible(node) and any(get(self.host.wrap(node), event) is not U
                                         for event in ('onPress', 'onRollOver')):
-                    # Secondary workflows remain a separate milestone.
-                    if node.name not in ('btn_help', 'btn_fullscreen'):
-                        nodes.append(node)
+                    nodes.append(node)
         return nodes
 
     def find(self, name):
