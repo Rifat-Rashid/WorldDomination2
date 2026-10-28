@@ -7,7 +7,7 @@ import html
 
 from .display_list import Matrix, MovieClip, Operation, Symbol, Timeline
 from .presentation_clock import PresentationClock
-from .runtime import ASObject, ASFunction, U, get, number, string, truth
+from .runtime import ASObject, ASFunction, U, get, number, string, truth, obj
 
 
 class ClipObject(ASObject):
@@ -47,6 +47,26 @@ class ClipObject(ASObject):
             '_totalframes': len(node.symbol.timeline.frames) if node.symbol.timeline else 1}
         if key in values:
             return values[key]
+        if key in ('_xmouse', '_ymouse'):
+            matrix = node.world_matrix
+            x, y = self.host.pointer
+            x, y = x-matrix.tx, y-matrix.ty
+            determinant = matrix.a*matrix.d-matrix.b*matrix.c
+            point = ((matrix.d*x-matrix.c*y)/determinant,
+                     (matrix.a*y-matrix.b*x)/determinant) if determinant else (0, 0)
+            return point[0 if key == '_xmouse' else 1]
+        if key in ('_width', '_height') and self.host.geometry:
+            points = []
+            def visit(child, matrix):
+                if child.symbol.kind in (2, 22, 32, 83):
+                    x, y, w, h = self.host.geometry(child.symbol)
+                    points.extend(matrix.point(px, py) for px, py in
+                                  ((x, y), (x+w, y), (x, y+h), (x+w, y+h)))
+                for descendant in child.ordered():
+                    visit(descendant, matrix @ descendant.matrix)
+            visit(node, node.matrix)
+            axis = 0 if key == '_width' else 1
+            return max(p[axis] for p in points)-min(p[axis] for p in points) if points else 0
         if key in self.props:
             return super().get(key)
         if key in self.methods:
@@ -58,7 +78,7 @@ class ClipObject(ASObject):
         key = string(key)
         return key in self.methods or key in ('_root', '_parent', '_name', '_x', '_y',
             '_xscale', '_yscale', '_rotation', '_visible', '_alpha', '_currentframe',
-            '_totalframes') or self.node.named(key) is not None or super().has(key)
+            '_totalframes', '_xmouse', '_ymouse', '_width', '_height') or self.node.named(key) is not None or super().has(key)
 
     def set(self, key, value):
         key = string(key)
@@ -134,9 +154,28 @@ class MovieClipHost:
         rt.globals.set('_root', self.root)
         rt.globals.set('_level0', self.root)
         self.clock = PresentationClock(self.frame)
+        self.pointer = (0, 0)
+        self.geometry = None
+        self.mouse_listeners = []
+        rt.globals.set('Mouse', obj({'addListener': self.add_mouse_listener,
+                                    'removeListener': self.remove_mouse_listener}))
         rt.globals.set('setInterval', self.interval)
         rt.globals.set('clearInterval', lambda timer_id: self.clock.clear_interval(timer_id))
         rt.globals.set('getTimer', lambda: int(self.clock.milliseconds))
+
+    def add_mouse_listener(self, listener):
+        if listener not in self.mouse_listeners:
+            self.mouse_listeners.append(listener)
+
+    def remove_mouse_listener(self, listener):
+        if listener in self.mouse_listeners:
+            self.mouse_listeners.remove(listener)
+
+    def mouse_event(self, event, pos):
+        self.pointer = pos
+        for listener in tuple(self.mouse_listeners):
+            if listener in self.mouse_listeners:
+                self.rt.invoke(listener, event)
 
     def wrap(self, node):
         if node is None:
@@ -167,7 +206,10 @@ class MovieClipHost:
             return U
         if target is U or target is None:
             return U  # Source update_selected_leaders calls gotoAndStop(undefined).
-        frame = timeline.labels.get(target) if isinstance(target, str) and target in timeline.labels else int(number(target))
+        frame = timeline.labels.get(target) if isinstance(target, str) and target in timeline.labels else number(target)
+        if not math.isfinite(frame):
+            return U  # Flash ignores unknown labels (e.g. the intermediate 'attack').
+        frame = int(frame)
         frame = max(1, min(len(timeline.frames), frame))
         old_frame, old_children = node.frame, dict(node.children)
         node.goto_frame(frame)

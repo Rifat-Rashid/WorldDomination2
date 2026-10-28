@@ -20,17 +20,28 @@ Click the title screen, choose your difficulty, nation color, building theme and
 one to four opponents, then click **Start Game**. The selected configuration
 carries into the original gameplay interface within the same window.
 
-Currently connected original controls:
+Original action controls:
 
-- **Resources** and **Mass Media** open their original action panels.
-- **Accept** fills an action slot; **Cancel** closes an unaccepted panel.
+- Choose Resources, Production, Technology, Mass Media, Direct Attack,
+  Prepared Attack, Defense, Propaganda or Diplomacy on the left.
+- Use the original production sliders, technology boxes and stock buttons.
+  Select a city on the map when prompted; spies also choose a target building.
+- Prepared attacks require a carrier on one turn, then a compatible payload
+  and target on the next. Ships can assign up to three payloads to cities of
+  one opponent. Space rockets use satellites.
+- **Accept** queues the action. **Cancel** abandons the draft; a prepared
+  carrier has a separate cancellation confirmation.
+- Click a filled action tube (or its action button) to cancel and refund it.
+  Click an empty tube to skip that action. Each action type can be used once
+  per turn, matching the original interface.
 - Fill both slots, then click **Confirm** below the map to resolve the turn.
-- Original Music and Sound switches toggle playback independently.
-- **P** pauses presentation and audio; **Escape** closes the window.
+  Pending diplomacy offers must be accepted or rejected first.
+- Music and Sound switches operate independently. **P** pauses presentation
+  and audio; **Escape** closes the window.
 
-Other original action buttons, stock selection, action-slot cancellation, help,
-fullscreen and end-game workflows are not connected yet. Combat resolves through
-the existing synchronous engine; original timed battle playback is unfinished.
+Help, fullscreen and end-game presentation are not connected yet. Combat
+resolves through the existing synchronous engine; timed battle animation and
+battle audio synchronization remain unfinished.
 Presentation uses a 24 Hz logical clock and cached native surfaces. New scene
 states and unsupported effects can take longer to render on some systems.
 

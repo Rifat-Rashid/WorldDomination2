@@ -39,6 +39,18 @@ def test_clip_properties_parent_lookup_transform_and_native_calls():
     assert get(h.root, 'child') is U and get(clip, '_parent') is U
 
 
+def test_mouse_coordinates_use_inverse_parent_transform_and_scope_lookup():
+    h = tiny_host()
+    parent = h.rt.invoke(h.root, 'attachMovie', 'test_clip', 'parent', 1)
+    child = h.rt.invoke(parent, 'attachMovie', 'test_clip', 'child', 2)
+    parent.node.matrix = Matrix(0, 2, -3, 0, 100, 200)
+    child.node.matrix = Matrix(1, .2, .3, 1, 10, 20)
+    h.pointer = child.node.world_matrix.point(5, 7)
+    assert get(child, '_xmouse') == pytest.approx(5)
+    assert get(child, '_ymouse') == pytest.approx(7)
+    assert Scope(h.rt, child, [], [], []).get('_xmouse') == pytest.approx(5)
+
+
 def test_frame_controls_preserve_live_reference_across_inherited_move_and_back_seek():
     h = tiny_host()
     h.tree.symbol.timeline = Timeline([

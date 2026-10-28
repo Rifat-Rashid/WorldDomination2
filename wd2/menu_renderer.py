@@ -158,15 +158,24 @@ class MenuRenderer(SceneRenderer):
         return group
 
     def control_bounds(self, node):
-        """Bounds of original leaf geometry, for the rectangular setup controls."""
+        """Bounds of original geometry, including the existing city atlas."""
         points = []
-        for leaf in node.walk():
-            if leaf.symbol.timeline:
-                continue
-            if leaf.symbol.kind not in (2, 22, 32, 83):
-                continue
-            x, y, w, h = self.assets.bounds(leaf.symbol)
+        def visit(leaf):
+            city = self.assets.cities.get(leaf.character_id)
+            if city:
+                frame = city['frames'].get(str(leaf.frame))
+                if not frame:
+                    return
+                x, y = frame['offset']
+                w, h = frame['crop'][2]-frame['crop'][0], frame['crop'][3]-frame['crop'][1]
+            elif leaf.symbol.kind in (2, 22, 32, 83):
+                x, y, w, h = self.assets.bounds(leaf.symbol)
+            else:
+                for child in leaf.ordered():
+                    visit(child)
+                return
             points.extend(leaf.world_matrix.point(px, py) for px, py in ((x,y),(x+w,y),(x,y+h),(x+w,y+h)))
+        visit(node)
         if not points:
             return None
         return min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points)
