@@ -36,6 +36,8 @@ class ActionEntry:
         self.presenter.set('btnPressed_accept', self.accept)
         self.presenter.set('btnPressed_tube', self.tube)
         self.presenter.set('updateView', self.update)
+        self.source_roll_over_stat = get(self.presenter, 'roll_over_stat')
+        self.presenter.set('roll_over_stat', self.roll_over_stat)
         # Confirm deliberately retains the synchronous engine's casualty boundary.
         self.presenter.set('btnPressed_turn', scene.resolve)
         interface_model = self.rt.new('Model_interface')
@@ -47,6 +49,31 @@ class ActionEntry:
         self.rt.invoke(self.model, 'resetUserSelections')
         self.model.set('view_leader_MCs_played', 'done')
         get(self.rt.globals, 'view').set('remove_city_popups', lambda: U)
+        # Expose the authored relationship hover on the portrait as well as
+        # its narrow adjacent meter. Keep the existing diplomacy click handler.
+        for index in range(1, 5):
+            portrait = get(self.scene.interface, f'btn{39 + index}')
+            portrait.set('onRollOver', lambda i=index: self.portrait_hover(i))
+            portrait.set('onRollOut', lambda: self.hud.set('infoLine', 'null'))
+
+    def roll_over_stat(self, kind, player_num=U):
+        if kind != 'regard':
+            return self.rt.call(self.source_roll_over_stat, self.presenter, [kind, player_num])
+        # Original AVM1 assigns infoLine after enumeration, before the switch
+        # exit. The recovered source misplaced that exit before the assignment.
+        label = ''
+        for player in self.game.players:
+            if get(player, 'playerNum') == player_num:
+                regard = number(get(player, 'regardArr')[0])
+                level = 5 if regard > 75 else 4 if regard > 55 else 3 if regard > 45 else 2 if regard > 25 else 1
+                label = f'regard{level}'
+        self.hud.set('infoLine', label)
+
+    def portrait_hover(self, index):
+        player = self.game.players[index]
+        if player is not U and truth(get(player, 'alive')):
+            meter = get(self.scene.interface, f'stat{index}1')
+            self.host.dispatch(meter.node, 'onRollOver')
 
     def accept(self):
         ta = self.rt.invoke(self.human, 'getNextTurnAction')
