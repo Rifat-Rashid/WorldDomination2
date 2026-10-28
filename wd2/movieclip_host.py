@@ -160,6 +160,11 @@ class ClipObject(ASObject):
     def set(self, key, value):
         key = string(key)
         node, m = self.node, self.node.matrix
+        if key in ('_x', '_y', '_xscale', '_yscale', '_rotation', '_alpha', '_visible'):
+            # AVM1 ignores invalid numeric display assignments, retaining the
+            # previous value. Do not let an absent AS2 property poison a matrix.
+            if value is U or value is None or math.isnan(number(value)):
+                return value
         if key in ('_x', '_y'):
             node.matrix = replace(m, **{'tx' if key == '_x' else 'ty': number(value)})
         elif key in ('_xscale', '_yscale'):
@@ -177,7 +182,7 @@ class ClipObject(ASObject):
         elif key == '_alpha':
             node.color = replace(node.color, mult=(*node.color.mult[:3], number(value)/100))
         elif key == '_visible':
-            node.visible = truth(value)
+            node.visible = number(value) != 0
         elif key == '_name':
             node.name = string(value)
         elif key in ('_currentframe', '_totalframes', '_parent', '_root'):

@@ -140,7 +140,7 @@ class MenuRenderer(SceneRenderer):
 
     def _node(self, node, path):
         props = getattr(node, 'as2_text', {})
-        if node.symbol.kind != 37 or 'text' not in props:
+        if node.symbol.kind != 37 or 'text' not in props or not node.matrix.is_finite():
             return super()._node(node, path)
         group = element('g', {'transform': node.matrix.svg()})
         if not node.visible:

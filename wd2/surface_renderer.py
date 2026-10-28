@@ -64,12 +64,21 @@ class SurfaceRenderer:
         opening = getattr(renderer.assets, 'opening', None)
         self.video_parents = {opening['video']['parent_id']} if opening else set()
         self.decoded_frames = 0
+        self.invalid_transforms = set()
+
+    def valid_transform(self, node, matrix):
+        if matrix.is_finite():
+            return True
+        self.invalid_transforms.add((node.character_id, node.name, node.depth))
+        return False
 
     def signature(self, node):
         if id(node) in self._signatures:
             return self._signatures[id(node)]
         if not node.visible:
             return ('hidden',)
+        if not self.valid_transform(node, node.matrix):
+            return ('invalid_transform', node.character_id, node.clip_depth)
         text = getattr(node, 'as2_text', {})
         fmt = text.get('_textFormat', U)
         text_key = ('text' in text, str(text.get('text', '')), text.get('textColor', U),
@@ -88,7 +97,7 @@ class SurfaceRenderer:
         return result
 
     def unsupported(self, node):
-        if not node.visible:
+        if not node.visible or not node.matrix.is_finite():
             return False
         if node.filters or node.extras or node.blend_mode not in (0, 1):
             return True
@@ -113,9 +122,11 @@ class SurfaceRenderer:
         def visit(n, parent_matrix):
             if not n.visible:
                 return True
+            matrix = parent_matrix @ n.matrix
+            if not self.valid_transform(n, matrix):
+                return True
             if n.color.add[3]:
                 return False  # Alpha addition can reveal a filter's padding.
-            matrix = parent_matrix @ n.matrix
             for start, end, style in getattr(n, 'graphics', ()):
                 padding = style[0]/2
                 for x, y in (start, end):
@@ -209,8 +220,8 @@ class SurfaceRenderer:
         for parent in ancestors:
             matrix = matrix @ parent.matrix
         matrix = matrix @ node.matrix
-        if not all(math.isfinite(v) for v in (matrix.tx, matrix.ty)):
-            return self.raster(node, ancestors, size)
+        if not self.valid_transform(node, matrix):
+            return self.empty()
         x, y = math.floor(matrix.tx), math.floor(matrix.ty)
         origin = size[0]//2, size[1]//2
         view = copy(node)
@@ -235,6 +246,8 @@ class SurfaceRenderer:
         for parent in ancestors:
             matrix = matrix @ parent.matrix
         matrix = matrix @ node.matrix
+        if not self.valid_transform(node, matrix):
+            return self.empty()
         if ((matrix.a,matrix.b,matrix.c,matrix.d) != (1,0,0,1)
                 or node.color != ColorTransform() or not hasattr(self.renderer.assets,'video_frame')):
             return None
@@ -279,7 +292,7 @@ class SurfaceRenderer:
         return result, bounds.topleft
 
     def paint(self, node, ancestors, level, size):
-        if not node.visible:
+        if not node.visible or not self.valid_transform(node, node.matrix):
             return self.empty()
         key = ('paint', size, self.signature(node), tuple(a.matrix for a in ancestors))
         cached = self.layers.get(key) if level else None
@@ -315,6 +328,7 @@ class SurfaceRenderer:
 
     def frame(self, root, size=(800, 600), background=(0, 0, 0)):
         self._signatures = {}
+        self.invalid_transforms = set()
         key = (size, background, self.signature(root))
         cached = self.frames.get(key)
         if cached is not None:
@@ -332,6 +346,7 @@ class SurfaceRenderer:
 
     def stats(self):
         return {'rasterizations': self.rasterizations, 'fallback_frames': self.fallback_frames,
+                'invalid_transforms': len(self.invalid_transforms),
                 'decoded_video_frames': self.decoded_frames,
                 'layer_hits': self.layers.hits, 'frame_hits': self.frames.hits,
                 'layer_entries': len(self.layers.items), 'frame_entries': len(self.frames.items),

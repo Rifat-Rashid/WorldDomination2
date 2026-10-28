@@ -179,9 +179,13 @@ class SceneRenderer:
         return colored
 
     def _node(self, node, path):
-        group = element('g', {'transform': node.matrix.svg()})
+        group = element('g')
         if not node.visible:
             return group
+        if not node.matrix.is_finite():
+            self._issue(node, path, 'nonfinite_transform_not_rendered')
+            return group
+        group.set('transform', node.matrix.svg())
         for key in node.extras:
             self._issue(node, path, key)
         if node.filters:

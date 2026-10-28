@@ -4,6 +4,7 @@ This module deliberately does not execute AVM1 scripts or model callbacks.
 Seeking constructs timeline state; it is not a simulation of initialized Flash.
 """
 from dataclasses import dataclass, field, asdict
+import math
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,9 @@ class Matrix:
     d: float = 1
     tx: float = 0
     ty: float = 0
+
+    def is_finite(self):
+        return all(math.isfinite(v) for v in (self.a, self.b, self.c, self.d, self.tx, self.ty))
 
     def __matmul__(self, other):
         return Matrix(self.a*other.a+self.c*other.b, self.b*other.a+self.d*other.b,
