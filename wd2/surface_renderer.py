@@ -61,6 +61,9 @@ class SurfaceRenderer:
         self.rasterizations = self.fallback_frames = 0
         self.city_ids = set(getattr(renderer.assets, 'cities', {}))
         self._signatures = {}
+        opening = getattr(renderer.assets, 'opening', None)
+        self.video_parents = {opening['video']['parent_id']} if opening else set()
+        self.decoded_frames = 0
 
     def signature(self, node):
         if id(node) in self._signatures:
@@ -78,6 +81,7 @@ class SurfaceRenderer:
         result = (node.character_id, node.matrix, node.color, node.clip_depth,
                 node.ratio, freeze(node.filters), node.blend_mode, freeze(node.extras), freeze(getattr(node, 'graphics', ())),
                 node.frame if node.character_id in self.city_ids else None, text_key,
+                node.parent.frame if node.symbol.kind == 60 and node.parent else None,
                 tuple((c.depth, self.signature(c)) for c in node.ordered())
                 if node.character_id not in self.city_ids else tuple((c.depth, self.signature(c)) for c in self.renderer.city_overlays(node)))
         self._signatures[id(node)] = result
@@ -90,7 +94,9 @@ class SurfaceRenderer:
             return True
         if node.symbol.timeline and node.character_id not in self.city_ids:
             return any(self.unsupported(c) for c in node.ordered())
-        return node.symbol.kind not in (2, 22, 32, 83, 11, 33, 37) and node.character_id not in self.city_ids
+        return (node.symbol.kind not in (2, 22, 32, 83, 11, 33, 37)
+                and not (hasattr(self.renderer.assets, 'supports') and self.renderer.assets.supports(node.symbol.kind))
+                and node.character_id not in self.city_ids)
 
     @staticmethod
     def partial(node, children):
@@ -224,6 +230,30 @@ class SurfaceRenderer:
         surface, position = cached
         return surface, (position[0]+x-origin[0], position[1]+y-origin[1])
 
+    def video_paint(self, node, ancestors):
+        matrix = Matrix()
+        for parent in ancestors:
+            matrix = matrix @ parent.matrix
+        matrix = matrix @ node.matrix
+        if ((matrix.a,matrix.b,matrix.c,matrix.d) != (1,0,0,1)
+                or node.color != ColorTransform() or not hasattr(self.renderer.assets,'video_frame')):
+            return None
+        x,y = math.floor(matrix.tx),math.floor(matrix.ty)
+        fx,fy = round(matrix.tx-x,10),round(matrix.ty-y,10)
+        key = ('video',node.character_id,node.parent.frame,fx,fy)
+        cached = self.layers.get(key)
+        if cached is None:
+            from PIL import Image
+            source = self.renderer.assets.video_frame(node)
+            image = Image.new('RGBA',(source.width+2,source.height+2))
+            image.paste(source,(1,1))
+            image = image.transform(image.size,Image.Transform.AFFINE,(1,0,-fx,0,1,-fy),Image.Resampling.BILINEAR)
+            surface = self.pg.image.frombytes(image.tobytes(),image.size,'RGBA').convert_alpha().premul_alpha()
+            cached = surface, (0,0)
+            self.layers.put(key,cached)
+            self.decoded_frames += 1
+        return cached[0],(x-1,y-1)
+
     def clipped(self, paint, mask):
         surface, position = paint
         alpha, mask_position = mask
@@ -255,7 +285,12 @@ class SurfaceRenderer:
         cached = self.layers.get(key) if level else None
         if cached is not None:
             return cached
-        if (level >= 2 or not node.symbol.timeline or node.character_id in self.city_ids
+        if node.symbol.kind == 60:
+            cached = self.video_paint(node,ancestors)
+            if cached is not None:
+                self.layers.put(key,cached)
+                return cached
+        if ((level >= 2 and node.character_id not in self.video_parents) or not node.symbol.timeline or node.character_id in self.city_ids
                 or node.color != ColorTransform() or getattr(node, 'graphics', ())):
             # SVG retains precise affine rasterization and group color effects.
             cached = self.translated_sprite(node, ancestors, size)
@@ -297,6 +332,7 @@ class SurfaceRenderer:
 
     def stats(self):
         return {'rasterizations': self.rasterizations, 'fallback_frames': self.fallback_frames,
+                'decoded_video_frames': self.decoded_frames,
                 'layer_hits': self.layers.hits, 'frame_hits': self.frames.hits,
                 'layer_entries': len(self.layers.items), 'frame_entries': len(self.frames.items),
                 'layer_bytes': self.layers.bytes, 'frame_bytes': self.frames.bytes,

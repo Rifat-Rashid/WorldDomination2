@@ -6,7 +6,7 @@ rights holders. This unofficial reconstruction is not endorsed by them.
 The following materials derive from the original game and are not claimed as
 newly authored project code:
 
-- Game graphics, city images, vector artwork, audio and font data under `assets/`.
+- Game graphics, city images, vector artwork, video, audio and font data under `assets/`.
 - Converted timeline, symbol, text-layout and linkage metadata under `assets/runtime/`.
 - Python translations of original game classes and timeline scripts under
   `wd2/generated/`.

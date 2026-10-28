@@ -21,7 +21,9 @@ python -m pip install -r requirements.txt
 python run_game.py
 ```
 
-Click the title screen, choose your difficulty, nation color, building theme and
+The original logo and intro video play first; click the video to skip it, or use
+`python run_game.py --skip-intro` to open directly on the title. Then click the
+title screen, choose your difficulty, nation color, building theme and
 one to four opponents, then click **Start Game**. The selected configuration
 carries into the original gameplay interface within the same window.
 
@@ -96,6 +98,12 @@ SVG and 18 ms through the cached compositor after warm-up. Sprites reuse their
 registered rasters when moving by whole pixels; fractional positioning and
 transforms remain part of the cache key. Cold frames and new effects can still
 miss the 41.7 ms budget.
+
+The opening's decoded video frames compose directly with cached original
+artwork. A 12-frame sample measured 9 ms warm frame work, down from 51 ms with
+video SVG rasterization; cold startup fell from 1.14 s to 0.26 s. These figures
+exclude window pacing and vary by hardware. No video decoder installation is
+required at runtime.
 
 ## Validation
 

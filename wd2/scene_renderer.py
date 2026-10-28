@@ -131,10 +131,10 @@ class SceneRenderer:
 
     def leaf_asset(self, node):
         suffix = '_stencil' if self._stencil else ''
-        asset_id = f'asset_{node.character_id}'+suffix
-        key = node.character_id, suffix
+        asset_id = (self.assets.node_asset_id(node) if hasattr(self.assets, 'node_asset_id') else f'asset_{node.character_id}')+suffix
+        key = asset_id
         if key not in self._loaded:
-            asset = copy.deepcopy(self.assets.load(node.symbol))
+            asset = copy.deepcopy(self.assets.load_node(node) if hasattr(self.assets, 'load_node') else self.assets.load(node.symbol))
             if self._stencil:
                 ids = {e.get('id'): e.get('id')+suffix for e in asset.iter() if e.get('id')}
                 for e in asset.iter():

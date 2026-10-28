@@ -218,10 +218,15 @@ class MovieClipHost:
         self.entered = weakref.WeakKeyDictionary()
         self.script_symbols = set(script_symbols)
         self.scripts = {}
+        self.timeline_sound = None
         for path, fn in rt.scripts.items():
             match = re.fullmatch(r'DefineSprite_(\d+)[^/]*/frame_(\d+)/DoAction(?:_(\d+))?\.as', path)
             if match:
                 self.scripts.setdefault((int(match[1]), int(match[2])), []).append((int(match[3] or 1), fn))
+            else:
+                match = re.fullmatch(r'frame_(\d+)/DoAction(?:_(\d+))?\.as', path)
+                if match:
+                    self.scripts.setdefault((0, int(match[1])), []).append((int(match[2] or 1), fn))
         self.linkages = {s.linkage: sid for sid, s in root.symbols.items() if s.linkage}
         get(rt.globals, 'Object').props['registerClass'] = self.register_class
         self.empty_id = min(root.symbols)-1
@@ -295,6 +300,8 @@ class MovieClipHost:
             self.enter(child)
         if self.entered.get(node) != node.frame:
             self.entered[node] = node.frame
+            if self.timeline_sound:
+                self.timeline_sound(node)
             if node.character_id in self.script_symbols:
                 for _, fn in sorted(self.scripts.get((node.character_id, node.frame), [])):
                     self.rt.call(fn, self.wrap(node), [])

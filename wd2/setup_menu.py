@@ -15,6 +15,7 @@ from .runtime import Runtime, ASObject, ASFunction, NativeClass, get, obj, U
 from .scene_renderer import SVGAssets
 from .swf_scene import ROOT, SWFDocument
 from .scene_data import load_scene
+from .opening_assets import OpeningAssets
 
 
 def reachable(document, seeds):
@@ -31,15 +32,8 @@ def reachable(document, seeds):
     return found
 
 
-class CachedAssets(SVGAssets):
-    def __init__(self):
-        super().__init__()
-        self.cache = {}
-
-    def load(self, symbol):
-        if symbol.character_id not in self.cache:
-            self.cache[symbol.character_id] = super().load(symbol)
-        return self.cache[symbol.character_id]
+class CachedAssets(OpeningAssets):
+    pass
 
 
 class SetupMenu:
@@ -119,6 +113,9 @@ class SetupMenu:
         self.lifecycle = None
         self.play_battles = False
         self.playback = None
+        self.opening = None
+        self.opening_enabled = False
+        self.intro_sound = None
         from .text_entry import TextEntry
         self.text_entry = TextEntry(self)
         self.host.text_metrics = self.renderer.text_metrics
@@ -129,6 +126,7 @@ class SetupMenu:
 
     def restart(self):
         backend, state, playback_enabled = self.audio.backend, self.rt.rng.getstate(), self.play_battles
+        opening_enabled = self.opening_enabled
         self.audio.close()
         replacement = SetupMenu(self.seed, self.document, state)
         replacement.fullscreen_requested = self.fullscreen_requested
@@ -137,9 +135,45 @@ class SetupMenu:
         self.rt.globals.set('fscommand', self.fscommand)
         self.text_entry.menu = self
         self.play_battles = playback_enabled
+        self.opening_enabled = opening_enabled
+        if opening_enabled:
+            self.audio.theme.stop()
         if backend:
             backend.host = self.audio
             self.audio.connect(backend)
+        if opening_enabled:
+            self.begin_opening()
+
+    @property
+    def active_scene(self):
+        return self.opening or self.playback or self
+
+    def begin_opening(self):
+        from .opening import Opening
+        self.audio.theme.stop()
+        self.opening = Opening(self)
+
+    def begin_intro(self):
+        from .generated.Main import f_9 as skip_intro
+        self.audio.theme.stop()
+        if get(get(self.model,'option'),'music'):
+            self.rt.invoke(get(self.model,'option'),'setMusic')
+        movie = get(self.root,'introMovie')
+        self.host.script_symbols.update(reachable(self.document,(5916,)))
+        for node in movie.node.walk():
+            node.playing = bool(node.symbol.timeline)
+        self.host.enter(movie.node)
+        movie.set('_visible',True)
+        movie.set('onPress',ASFunction(skip_intro))
+        self.audio.extra_assets['@stream5912'] = ROOT/'assets/runtime/opening/intro.wav'
+        self.intro_sound = self.audio.new_sound(movie)
+        self.intro_sound.linkage = '@stream5912'
+        self.intro_sound.start()
+
+    def finish_intro_audio(self):
+        if self.intro_sound and not self.tree.named('introMovie').visible:
+            self.intro_sound.stop()
+            self.intro_sound = None
 
     def start_game(self):
         if self.game is not None:
@@ -177,6 +211,12 @@ class SetupMenu:
 
     def press(self, name):
         """Dispatch original callbacks by instance name (also used by validation)."""
+        if self.opening:
+            return U
+        if name == 'introMovie':
+            result = self.host.dispatch(self.tree.named('introMovie'),'onPress')
+            self.finish_intro_audio()
+            return result
         if self.playback:
             return U
         if name == 'btn_start':
@@ -191,12 +231,36 @@ class SetupMenu:
         return self.host.dispatch(node, 'onPress')
 
     def png(self):
-        scene = self.playback or self
-        return scene.renderer.png(scene.tree)
+        scene = self.active_scene
+        return scene.renderer.png(self.render_tree if scene is self else scene.tree)
+
+    @property
+    def render_tree(self):
+        # These two authored backgrounds are opaque across all 800x600 pixels.
+        # Skip covered layers while retaining the live hierarchy and callbacks.
+        from .surface_renderer import SurfaceRenderer
+        for name in ('introMovie','splashScreenMC'):
+            node = self.tree.named(name)
+            if node.visible:
+                return SurfaceRenderer.partial(self.tree,[node])
+        return self.tree
 
     def step(self, ticks=1):
+        if self.opening:
+            self.opening.host.clock.paused = self.host.clock.paused
+            before = self.opening.host.clock.ticks
+            self.opening.step(ticks)
+            elapsed = self.opening.host.clock.ticks-before
+            self.host.clock.ticks += elapsed
+            if self.opening.done:
+                self.opening = None
+                self.begin_intro()
+                self.step(ticks-elapsed)
+            return
         if not self.playback:
-            return self.host.clock.step(ticks)
+            self.host.clock.step(ticks)
+            self.finish_intro_audio()
+            return
         self.playback.host.clock.paused = self.host.clock.paused
         before = self.playback.host.clock.ticks
         self.playback.step(ticks)
@@ -209,13 +273,17 @@ class SetupMenu:
 
     def surface(self, pygame):
         from .surface_renderer import SurfaceRenderer
-        scene = self.playback or self
+        scene = self.active_scene
         cached = getattr(self, '_surface_renderer', None)
         if cached is None or cached.renderer is not scene.renderer:
             self._surface_renderer = SurfaceRenderer(scene.renderer, pygame)
-        return self._surface_renderer.frame(scene.tree)
+        return self._surface_renderer.frame(self.render_tree if scene is self else scene.tree)
 
     def control_at(self, pos):
+        if self.opening:
+            return None
+        if self.tree.named('introMovie').visible:
+            return 'introMovie'
         if self.playback:
             return None
         if self.lifecycle and self.lifecycle.status:
@@ -233,7 +301,7 @@ class SetupMenu:
         return None
 
     def click(self, pos):
-        if self.playback:
+        if self.playback or self.opening:
             return
         self.host.pointer = pos
         field = self.text_entry.at(pos)
@@ -245,7 +313,7 @@ class SetupMenu:
             self.press(name)
 
     def motion(self, pos):
-        if self.playback:
+        if self.playback or self.opening or self.tree.named('introMovie').visible:
             return
         if self.lifecycle and self.lifecycle.status:
             return
@@ -277,7 +345,7 @@ class SetupMenu:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(self.png())
-        report = {'state': self.snapshot(), 'rendering': self.renderer.report,
+        report = {'state': self.snapshot(), 'rendering': self.active_scene.renderer.report,
                   'audio': {'theme': self.audio.theme.linkage, 'music_enabled': get(get(self.model, 'option'), 'music'),
                             'device_connected': self.audio.backend is not None},
                   'scope': 'Recovered setup, original action entry and HUD; synchronous existing game engine.'}
@@ -294,6 +362,7 @@ def main():
     parser.add_argument('--smoke', action='store_true', help='Start and resolve one turn through original controls')
     parser.add_argument('--svg-renderer', action='store_true', help='Use the uncached SVG window renderer')
     parser.add_argument('--instant-battles', action='store_true', help='Skip battle presentation; retain synchronous turn resolution')
+    parser.add_argument('--skip-intro', action='store_true', help='Open directly on the title splash')
     args = parser.parse_args()
     menu = SetupMenu(args.seed)
     if (args.screenshot and not args.splash) or args.select_first or args.start_game or args.smoke:
@@ -309,10 +378,11 @@ def main():
         menu.save(args.screenshot)
         return
     menu.play_battles = not args.instant_battles
-    run_window(menu, cached=not args.svg_renderer)
+    run_window(menu, cached=not args.svg_renderer,
+               opening=not (args.skip_intro or args.select_first or args.start_game or args.smoke))
 
 
-def run_window(menu, cached=True):
+def run_window(menu, cached=True, opening=False):
     import pygame
     pygame.init()
     screen = pygame.display.set_mode((800, 600))
@@ -326,6 +396,9 @@ def run_window(menu, cached=True):
         except pygame.error as error:
             pygame.display.set_caption(f'World Domination II — audio unavailable: {error}')
             print(f'Audio unavailable: {error}', file=sys.stderr)
+        menu.opening_enabled = opening
+        if opening:
+            menu.begin_opening()
         running = True
         while running:
             accumulator += pacing.tick(24) * 24
@@ -366,6 +439,8 @@ def run_window(menu, cached=True):
             screen.blit(frame, (0, 0))
             pygame.display.flip()
     finally:
+        if menu.opening:
+            menu.opening.audio.close()
         if menu.playback:
             menu.playback.finish()
         menu.audio.close()
