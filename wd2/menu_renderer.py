@@ -2,6 +2,7 @@
 import base64
 import io
 import math
+from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -10,6 +11,11 @@ from .resources import asset_directory
 from .runtime import get, U
 from .scene_renderer import SceneRenderer, element, XLINK
 from .swf_scene import Reader
+
+
+@lru_cache(maxsize=32)
+def text_font(path, size):
+    return ImageFont.truetype(path, size)
 
 
 def font_families(document):
@@ -52,14 +58,17 @@ def edit_fields(document):
             r.text()
         height = r.u16()/20 if f1 & 1 else 12
         color = tuple(r.take(4)) if f1 & 4 else (255, 255, 255, 255)
-        if f1 & 2:
-            r.u16()
+        max_length = r.u16() if f1 & 2 else 0
         align = 0
         if f2 & 32:
             align = r.u8()
             r.take(8)  # margins, indent, leading; selected fields have zero margins.
+        variable = r.text()
+        initial = r.text() if f1 & 128 else ''
         result[sid] = {'bounds': bounds, 'font': font, 'size': height, 'color': color, 'align': align,
-                       'word_wrap': bool(f1 & 64), 'multiline': bool(f1 & 32)}
+                       'word_wrap': bool(f1 & 64), 'multiline': bool(f1 & 32),
+                       'editable': not bool(f1 & 8), 'password': bool(f1 & 16),
+                       'max_length': max_length, 'variable': variable, 'initial_text': initial}
     return result
 
 
@@ -72,6 +81,31 @@ class MenuRenderer(SceneRenderer):
         self.font_paths = {int(p.name.split('_', 1)[0]): p
                            for p in sorted(asset_directory('fonts').glob('*.ttf'))}
         self.text_cache = {}
+
+    def text_metrics(self, node):
+        field = self.fields[node.character_id]
+        props = getattr(node, 'as2_text', {})
+        fmt = props.get('_textFormat', U)
+        size = get(fmt, 'size')
+        size = field['size'] if size is U else size
+        font = text_font(str(self.font_path(field['font'], get(fmt, 'font'))), round(size*4))
+        text = str(props.get('text', field.get('initial_text', '')))
+        width = math.ceil(field['bounds'][1]-field['bounds'][0])-4
+        lines = []
+        for paragraph in text.split('\n'):
+            if not field.get('word_wrap'):
+                lines.append(paragraph); continue
+            line = ''
+            for word in paragraph.split():
+                candidate = (line+' '+word).strip()
+                if line and font.getlength(candidate) > width*4:
+                    lines.append(line); line = word
+                else:
+                    line = candidate
+            lines.append(line)
+        height = math.ceil(field['bounds'][3]-field['bounds'][2])
+        visible_lines = max(1, math.floor((height-4)/(size+2)))
+        return lines, visible_lines
 
     def font_path(self, font_id, family=U):
         if family is U and font_id in self.font_paths:
@@ -112,42 +146,37 @@ class MenuRenderer(SceneRenderer):
         color = props.get('textColor', get(fmt, 'color'))
         color = field['color'] if color is U else ((int(color)>>16)&255, (int(color)>>8)&255, int(color)&255, 255)
         text = str(props['text'])
-        if not text:
+        if not text and not props.get('_focused'):
             return group
         # A device-font declaration can have no exported glyph file. Resolve its
         # original family to an embedded/exported counterpart, not a system font.
         font_path = self.font_path(field['font'], get(fmt, 'font'))
-        key = (node.character_id, text, font_size, color, font_path.name)
+        scroll = max(1, int(props.get('scroll', 1)))
+        focused = props.get('_focused', False) and self.host and (self.host.clock.ticks//12) % 2 == 0
+        key = (node.character_id, text, font_size, color, font_path.name, scroll, bool(focused), props.get('_caret', 0))
         if key not in self.text_cache:
             x0, x1, y0, y1 = field['bounds']
             scale = 4
             width, height = math.ceil(x1-x0), math.ceil(y1-y0)
             image = Image.new('RGBA', (width*scale, height*scale))
-            font = ImageFont.truetype(str(font_path), round(font_size*scale))
+            font = text_font(str(font_path), round(font_size*scale))
             draw = ImageDraw.Draw(image)
             if field['align'] == 2:
                 xy, anchor = (width*scale/2, 4*scale), 'mt'
             else:
                 xy, anchor = (2*scale, 4*scale), 'lt'
-            if field.get('word_wrap'):
-                lines = []
-                for paragraph in text.split('\n'):
-                    line = ''
-                    for word in paragraph.split():
-                        candidate = (line+' '+word).strip()
-                        if line and draw.textlength(candidate, font=font) > (width-4)*scale:
-                            lines.append(line)
-                            line = word
-                        else:
-                            line = candidate
-                    lines.append(line)
-                text = '\n'.join(lines)
+            lines, count = self.text_metrics(node)
+            text = '\n'.join(lines[scroll-1:scroll-1+count])
             if '\n' in text:
                 # Text fields in this slice are top-aligned; render each source line.
                 for i, line in enumerate(text.split('\n')):
                     draw.text((xy[0], xy[1]+i*(font_size+2)*scale), line, font=font, fill=color, anchor=anchor)
             else:
                 draw.text(xy, text, font=font, fill=color, anchor=anchor)
+            if focused:
+                prefix = str(props['text'])[:int(props.get('_caret', len(str(props['text']))))].split('\n')[-1]
+                cx = 2*scale + font.getlength(prefix)
+                draw.line((cx, 3*scale, cx, (font_size+5)*scale), fill=color, width=scale)
             stream = io.BytesIO()
             image.save(stream, format='PNG')
             self.text_cache[key] = (width, height, 'data:image/png;base64,'+base64.b64encode(stream.getvalue()).decode('ascii'))

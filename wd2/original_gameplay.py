@@ -109,6 +109,7 @@ def build_session(menu):
             rt.invoke(city, 'setMapVars', get(host.root, 'battleMC'), 0, xy[0], xy[1])
             city.set('theme', get(player, 'buildingSet_id'))
             clip = headless.clip()
+            clip.set('mc', headless.clip())
             clip.set('propagandaBeams', headless.clip())
             clip.set('propagandaBeams2', headless.clip())
             city.set('image', clip)
@@ -142,6 +143,9 @@ class OriginalGameplay:
         for name in ('introMovie', 'splashScreenMC', 'gameMenu', 'endGameMC', 'full_version_MC'):
             get(host.root, name).set('_visible', False)
         self.interface.set('_visible', True)
+        # Original help input: repeated index presses reach frame 10's reveal.
+        host.script_symbols.add(4124)
+        host.enter(self.interface.node)
         from .action_entry import ActionEntry
         self.actions = ActionEntry(self)
         self.refresh()
@@ -159,6 +163,9 @@ class OriginalGameplay:
         self.game.advance()  # Exactly one synchronous turn; no impact replay.
         self.actions.after_turn()
         self.refresh()
+        owner = getattr(self, 'owner', None)
+        if owner and owner.lifecycle:
+            owner.lifecycle.check()
 
     def refresh(self):
         r, g = self.rt, self.game

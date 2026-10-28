@@ -43,10 +43,15 @@ class CachedAssets(SVGAssets):
 
 
 class SetupMenu:
-    def __init__(self, seed=0, document=None):
+    def __init__(self, seed=0, document=None, rng_state=None):
+        self.seed = seed
         self.document = document or load_scene()
         self.tree = self.document.root(10)
         self.rt = Runtime(seed)  # Dedicated menu RNG; no Game instance is touched.
+        if rng_state is not None:
+            self.rt.rng.setstate(rng_state)
+        self.fullscreen_requested = False
+        self.rt.globals.set('fscommand', self.fscommand)
         register_all(self.rt)
         scripts = reachable(self.document, (5882, 5907))
         self.host = MovieClipHost(self.rt, self.tree, scripts)
@@ -111,6 +116,27 @@ class SetupMenu:
         self.game = None
         self.gameplay = None
         self.last_error = None
+        self.lifecycle = None
+        from .text_entry import TextEntry
+        self.text_entry = TextEntry(self)
+        self.host.text_metrics = self.renderer.text_metrics
+
+    def fscommand(self, name, value=U):
+        if name == 'fullscreen':
+            self.fullscreen_requested = str(value).lower() == 'true'
+
+    def restart(self):
+        backend, state = self.audio.backend, self.rt.rng.getstate()
+        self.audio.close()
+        replacement = SetupMenu(self.seed, self.document, state)
+        replacement.fullscreen_requested = self.fullscreen_requested
+        self.__dict__.clear()
+        self.__dict__.update(replacement.__dict__)
+        self.rt.globals.set('fscommand', self.fscommand)
+        self.text_entry.menu = self
+        if backend:
+            backend.host = self.audio
+            self.audio.connect(backend)
 
     def start_game(self):
         if self.game is not None:
@@ -133,18 +159,25 @@ class SetupMenu:
         host.clock.ticks = self.host.clock.ticks
         host.clock.paused = self.host.clock.paused
         self.game, self.gameplay = game, gameplay
+        gameplay.owner = self
         self.rt, self.host, self.tree, self.root = game.rt, host, tree, host.root
+        self.rt.globals.set('fscommand', self.fscommand)
         self.model, self.menu_model, self.presenter = game.model, menu_model, presenter
         self.renderer = MenuRenderer(self.document, self.renderer.assets, host)
         host.geometry = self.renderer.assets.bounds
+        host.text_metrics = self.renderer.text_metrics
         self.hovered = None
         self.last_error = None
+        from .lifecycle import Lifecycle
+        self.lifecycle = Lifecycle(self)
         return game
 
     def press(self, name):
         """Dispatch original callbacks by instance name (also used by validation)."""
         if name == 'btn_start':
             return self.start_game()
+        if self.lifecycle and self.lifecycle.status:
+            return self.lifecycle.press(name)
         if self.gameplay:
             return self.gameplay.actions.press(name)
         node = self.tree.named('splashScreenMC') if name == 'splashScreenMC' else self.tree.named('gameMenu').named(name)
@@ -163,6 +196,8 @@ class SetupMenu:
         return self._surface_renderer.frame(self.tree)
 
     def control_at(self, pos):
+        if self.lifecycle and self.lifecycle.status:
+            return self.lifecycle.control_at(pos)
         if self.gameplay:
             return self.gameplay.actions.control_at(pos, self.renderer)
         if self.tree.named('splashScreenMC').visible:
@@ -177,11 +212,17 @@ class SetupMenu:
 
     def click(self, pos):
         self.host.pointer = pos
+        field = self.text_entry.at(pos)
+        self.text_entry.focus(field)
+        if field is not None:
+            return
         name = self.control_at(pos)
         if name:
             self.press(name)
 
     def motion(self, pos):
+        if self.lifecycle and self.lifecycle.status:
+            return
         if self.gameplay:
             return self.gameplay.actions.motion(pos, self.renderer)
         name = self.control_at(pos)
@@ -250,6 +291,7 @@ def run_window(menu, cached=True):
     pygame.display.set_caption('World Domination II')
     pacing = pygame.time.Clock()
     accumulator = 0
+    fullscreen = False
     try:
         try:
             menu.audio.connect(PygameMenuAudio(menu.audio, pygame))
@@ -264,6 +306,10 @@ def run_window(menu, cached=True):
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.TEXTINPUT:
+                    menu.text_entry.insert(event.text)
+                elif event.type == pygame.KEYDOWN and menu.text_entry.key(event.key, getattr(event, 'mod', 0)):
+                    pass
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     running = False
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
@@ -277,7 +323,17 @@ def run_window(menu, cached=True):
                     menu.release(event.pos)
                 elif event.type == pygame.WINDOWFOCUSLOST:
                     menu.release(menu.host.pointer)
+                    menu.text_entry.focus(None)
             menu.host.clock.step(ticks)
+            if menu.fullscreen_requested != fullscreen:
+                fullscreen = menu.fullscreen_requested
+                try:
+                    flags = pygame.SCALED | (pygame.FULLSCREEN if fullscreen else 0)
+                    screen = pygame.display.set_mode((800, 600), flags)
+                except pygame.error:
+                    fullscreen = menu.fullscreen_requested = False
+                    menu.model.set('fullscreen', False)
+                    screen = pygame.display.set_mode((800, 600))
             frame = menu.surface(pygame) if cached else pygame.image.load(io.BytesIO(menu.png()))
             screen.blit(frame, (0, 0))
             pygame.display.flip()
