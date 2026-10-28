@@ -153,3 +153,15 @@ def test_mobile_skin_snapshot_cannot_capture_a_live_resource_modal(ui):
     assert color.b>color.r and color.b>color.g
     assert ui.menu.game.snapshot()==before
     assert [n.matrix for n in ui.menu.tree.walk()]==matrices
+
+def test_settled_action_tube_uses_one_authored_label(ui):
+    menu=ui.menu
+    menu.press('btn1');menu.press('btnAccept');menu.step(120)
+    frame=ui.draw()
+    tube=ui.targets[-3][0]
+    # The authored filled tube has a green plate and black lettering. A second
+    # gold mobile caption would overlap the source label after its animation.
+    x,y,w,h=(round(v*ui.density) for v in (tube.x,tube.y+12,tube.w,tube.h-14))
+    pixels=[frame.get_at((xx,yy)) for yy in range(y,y+h) for xx in range(x,x+w)]
+    assert any(p.g>150 and p.r<100 for p in pixels)
+    assert not any(p.r>180 and 130<p.g<230 and p.b<90 for p in pixels)

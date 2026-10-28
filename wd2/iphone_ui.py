@@ -374,8 +374,6 @@ class LandscapeUI:
             self.label(screen,'FIRST ACTION' if i==0 else 'SECOND ACTION',pg.Rect(target.x,target.y,target.w,10),8,center=True)
             art=pg.Rect(target.x,target.y+10,target.w,target.h-11)
             screen.blit(pg.transform.smoothscale(self.crop(original,(216+i*149,544,140,44)),art.size),art)
-            action=get(get(m.game.human,'turnActionArr')[i],'action')
-            if truth(action):self.label(screen,str(action).replace('religion','Media').upper(),target.inflate(-8,-16),9,(255,194,63),center=True)
             self.targets.append((target,lambda name=name:m.press(name)))
         confirm=pg.Rect(rect.right-28,rect.y,28,rect.h)
         self.label(screen,'CONFIRM',pg.Rect(confirm.x-2,confirm.y,32,10),7,center=True)
