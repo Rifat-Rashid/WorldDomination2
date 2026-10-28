@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 
 from .display_list import ColorTransform
 from .swf_scene import ROOT, SWFDocument
-from .resources import asset_directory
+from .resources import asset_directory, asset_path, read_asset
 
 SVG = 'http://www.w3.org/2000/svg'
 XLINK = 'http://www.w3.org/1999/xlink'
@@ -58,9 +58,10 @@ class SVGAssets:
             path = asset_directory('texts') / f'{symbol.character_id}.svg'
         else:
             raise NotImplementedError(f'leaf tag {symbol.kind}')
+        path = asset_path(path)
         if not path.exists():
             raise NotImplementedError(f'missing SVG {path.relative_to(self.root)}')
-        svg = ET.parse(path).getroot()
+        svg = ET.fromstring(read_asset(path))
         group = svg.find(f'{{{SVG}}}g')
         if group is None:
             raise ValueError(f'No export registration group: {path}')

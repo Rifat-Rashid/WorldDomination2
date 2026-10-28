@@ -7,7 +7,7 @@ from functools import lru_cache
 from PIL import Image, ImageDraw, ImageFont
 
 from .swf_bits import Bits, records
-from .resources import asset_directory
+from .resources import asset_directory, read_asset
 from .runtime import get, U
 from .scene_renderer import SceneRenderer, element, XLINK
 from .swf_scene import Reader
@@ -15,7 +15,7 @@ from .swf_scene import Reader
 
 @lru_cache(maxsize=32)
 def text_font(path, size):
-    return ImageFont.truetype(path, size)
+    return ImageFont.truetype(io.BytesIO(read_asset(path)), size)
 
 
 def font_families(document):
@@ -79,7 +79,7 @@ class MenuRenderer(SceneRenderer):
         self.fields = edit_fields(document)
         self.font_families = font_families(document)
         self.font_paths = {int(p.name.split('_', 1)[0]): p
-                           for p in sorted(asset_directory('fonts').glob('*.ttf'))}
+                           for p in sorted(asset_directory('fonts').glob('*.ttf*'))}
         self.text_cache = {}
 
     def city_overlays(self, node):

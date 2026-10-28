@@ -106,6 +106,17 @@ video SVG rasterization; cold startup fell from 1.14 s to 0.26 s. These figures
 exclude window pacing and vary by hardware. No video decoder installation is
 required at runtime.
 
+## Asset storage
+
+Runtime assets occupy about 37 MB, reduced from 74 MB. Graphics use pixel-exact
+lossless WebP inside compressed SVGs; fonts and sound files use lossless gzip.
+The original sound payloads, city atlas and 202 intro-video frames are preserved.
+Assets decode when first needed and reuse the existing rendering/audio caches.
+No additional runtime dependencies or extraction step is required.
+
+This reduces the current checkout and source ZIP. A full Git clone still contains
+earlier asset versions in history; history has not been rewritten.
+
 ## Validation
 
 ```sh

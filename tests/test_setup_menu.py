@@ -78,7 +78,7 @@ def test_leader_hover_selection_and_rollout_render_with_original_device_font():
     assert menu.renderer.fields[5824]['font'] == 4465
     assert menu.renderer.font_families[4465] == 'Arial'
     assert 4465 not in menu.renderer.font_paths
-    assert menu.renderer.font_path(4465).name == '1_Arial_Arial.ttf'
+    assert menu.renderer.font_path(4465).name.removesuffix('.gz') == '1_Arial_Arial.ttf'
     menu.motion((205, 373))
     text = get(get(menu.root, 'gameMenu'), 'leaderText')
     assert get(text, 'text') == 'The Bombki'

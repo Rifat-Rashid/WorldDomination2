@@ -69,7 +69,8 @@ def test_converted_opening_matches_source_timeline_and_sample_metadata():
     assert meta['stream']['blocks'] == 202 and meta['stream']['latency_seek'] == 1633
     with Image.open(RUNTIME/'opening/5911.webp') as video:
         assert video.n_frames == 202 and video.size == (320,240)
-    with wave.open(str(RUNTIME/'opening/intro.wav')) as sound:
+    from wd2.resources import read_asset
+    with wave.open(io.BytesIO(read_asset(RUNTIME/'opening/intro.wav'))) as sound:
         assert sound.getframerate() == 22050 and sound.getnchannels() == 1
         assert 8 < sound.getnframes()/22050 < 8.5
 

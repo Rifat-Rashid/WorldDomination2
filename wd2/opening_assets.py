@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image
 
-from .resources import RUNTIME
+from .resources import RUNTIME, read_asset
 from .scene_renderer import SVGAssets, SVG, XLINK, element
 
 
@@ -55,7 +55,7 @@ class OpeningAssets(SVGAssets):
             self.dynamic_cache.move_to_end(key)
             return self.dynamic_cache[key]
         if node.symbol.kind == 46:
-            source = ET.parse(RUNTIME/f'morphs/{node.character_id}.svg').getroot()
+            source = ET.fromstring(read_asset(RUNTIME/f'morphs/{node.character_id}.svg'))
             group = source.find(f'{{{SVG}}}g')
             matrix = [float(x) for x in group.attrib.pop('transform')[7:-1].split(',')]
             self.bounds_cache[node.character_id] = (-matrix[4],-matrix[5],float(source.get('width')[:-2]),float(source.get('height')[:-2]))
