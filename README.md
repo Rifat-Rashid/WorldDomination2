@@ -1,23 +1,39 @@
-# World Domination II — Python reconstruction
+# World Domination 2 (WorldDomination2) — Python game
 
-An unofficial standalone Python reconstruction of the Flash strategy game.
-The original splash screen, setup menu, map, city artwork and gameplay HUD run
-without Flash, a browser or the original SWF.
+An unofficial Python reconstruction of **World Domination II**, also known as
+**World Domination 2**, the turn-based Flash strategy game by YoudaGames.
+Play locally on Windows or Linux against one to four computer opponents using
+resources, technology, diplomacy, propaganda and military attacks.
+
+This WorldDomination2 GitHub repository includes the Python game, runtime assets
+and tests. The original splash screen, setup menu, map, city artwork and gameplay
+interface run without Flash, a browser or the original SWF.
 
 The original gameplay rules and AI run through translated Python classes, with
 the original setup, action controls and presentation. Rendering and timing still
 have fidelity differences; pixel-perfect equivalence is not claimed.
 
 <p>
-  <img src="docs/screenshots/splash.png" alt="Reconstructed World Domination II splash screen" width="400" />
-  <img src="docs/screenshots/resources.png" alt="Reconstructed gameplay interface with Resources selected" width="400" />
+  <img src="docs/screenshots/splash.png" alt="World Domination 2 Python game title screen" width="400" />
+  <img src="docs/screenshots/resources.png" alt="World Domination 2 gameplay with the original Resources menu" width="400" />
 </p>
 
-## Install and launch
+## Download and play World Domination 2
 
-Use Python 3.12 or newer on Windows or Linux:
+Use Python 3.12 or newer on Windows or Linux. Download and extract the
+[latest source ZIP](https://github.com/Rifat-Rashid/WorldDomination2/archive/refs/heads/main.zip),
+then open a terminal in the extracted folder and run:
 
 ```sh
+python -m pip install -r requirements.txt
+python run_game.py
+```
+
+Or clone the repository with Git:
+
+```sh
+git clone https://github.com/Rifat-Rashid/WorldDomination2.git
+cd WorldDomination2
 python -m pip install -r requirements.txt
 python run_game.py
 ```
@@ -39,6 +55,8 @@ Original action controls:
   one opponent. Space rockets use satellites.
 - **Accept** queues the action. **Cancel** abandons the draft; a prepared
   carrier has a separate cancellation confirmation.
+- Hover an enemy portrait or its relationship meter to see the original mood
+  message, from hate to love. Click the portrait to open diplomacy.
 - Click a filled action tube (or its action button) to cancel and refund it.
   Click an empty tube to skip that action. Each action type can be used once
   per turn, matching the original interface.
@@ -133,6 +151,12 @@ device. Automated tests cover setup handoff, HUD/action bindings, real window
 event dispatch, mixer playback, deterministic simulations and asset integrity.
 Optional checks against source movies and external-player reference captures
 explicitly skip in this distribution because those fixtures are not included.
+
+AI regression tests check 36 controlled scenarios across all three difficulties
+against independently observed SWF bytecode results: 288 selected actions with
+targets, weapons and diplomacy choices, random-draw counts, and action scores.
+Equal-score ordering and full-campaign/native Flash random-number parity remain
+unverified; these checks do not establish complete behavioral equivalence.
 
 The game loads converted timeline instructions, individual vector artwork,
 registered city images, fonts and audio from `assets/`. It does not depend on
