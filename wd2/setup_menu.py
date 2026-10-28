@@ -117,6 +117,8 @@ class SetupMenu:
         self.gameplay = None
         self.last_error = None
         self.lifecycle = None
+        self.play_battles = False
+        self.playback = None
         from .text_entry import TextEntry
         self.text_entry = TextEntry(self)
         self.host.text_metrics = self.renderer.text_metrics
@@ -126,7 +128,7 @@ class SetupMenu:
             self.fullscreen_requested = str(value).lower() == 'true'
 
     def restart(self):
-        backend, state = self.audio.backend, self.rt.rng.getstate()
+        backend, state, playback_enabled = self.audio.backend, self.rt.rng.getstate(), self.play_battles
         self.audio.close()
         replacement = SetupMenu(self.seed, self.document, state)
         replacement.fullscreen_requested = self.fullscreen_requested
@@ -134,6 +136,7 @@ class SetupMenu:
         self.__dict__.update(replacement.__dict__)
         self.rt.globals.set('fscommand', self.fscommand)
         self.text_entry.menu = self
+        self.play_battles = playback_enabled
         if backend:
             backend.host = self.audio
             self.audio.connect(backend)
@@ -174,6 +177,8 @@ class SetupMenu:
 
     def press(self, name):
         """Dispatch original callbacks by instance name (also used by validation)."""
+        if self.playback:
+            return U
         if name == 'btn_start':
             return self.start_game()
         if self.lifecycle and self.lifecycle.status:
@@ -186,16 +191,33 @@ class SetupMenu:
         return self.host.dispatch(node, 'onPress')
 
     def png(self):
-        return self.renderer.png(self.tree)
+        scene = self.playback or self
+        return scene.renderer.png(scene.tree)
+
+    def step(self, ticks=1):
+        if not self.playback:
+            return self.host.clock.step(ticks)
+        self.playback.host.clock.paused = self.host.clock.paused
+        before = self.playback.host.clock.ticks
+        self.playback.step(ticks)
+        elapsed = self.playback.host.clock.ticks-before
+        self.host.clock.ticks += elapsed
+        if self.playback.done:
+            self.playback = None
+            self.lifecycle.check()
+            self.host.clock.step(ticks-elapsed)
 
     def surface(self, pygame):
         from .surface_renderer import SurfaceRenderer
+        scene = self.playback or self
         cached = getattr(self, '_surface_renderer', None)
-        if cached is None or cached.renderer is not self.renderer:
-            self._surface_renderer = SurfaceRenderer(self.renderer, pygame)
-        return self._surface_renderer.frame(self.tree)
+        if cached is None or cached.renderer is not scene.renderer:
+            self._surface_renderer = SurfaceRenderer(scene.renderer, pygame)
+        return self._surface_renderer.frame(scene.tree)
 
     def control_at(self, pos):
+        if self.playback:
+            return None
         if self.lifecycle and self.lifecycle.status:
             return self.lifecycle.control_at(pos)
         if self.gameplay:
@@ -211,6 +233,8 @@ class SetupMenu:
         return None
 
     def click(self, pos):
+        if self.playback:
+            return
         self.host.pointer = pos
         field = self.text_entry.at(pos)
         self.text_entry.focus(field)
@@ -221,6 +245,8 @@ class SetupMenu:
             self.press(name)
 
     def motion(self, pos):
+        if self.playback:
+            return
         if self.lifecycle and self.lifecycle.status:
             return
         if self.gameplay:
@@ -267,6 +293,7 @@ def main():
     parser.add_argument('--start-game', action='store_true', help='Start after selecting the first opponent')
     parser.add_argument('--smoke', action='store_true', help='Start and resolve one turn through original controls')
     parser.add_argument('--svg-renderer', action='store_true', help='Use the uncached SVG window renderer')
+    parser.add_argument('--instant-battles', action='store_true', help='Skip battle presentation; retain synchronous turn resolution')
     args = parser.parse_args()
     menu = SetupMenu(args.seed)
     if (args.screenshot and not args.splash) or args.select_first or args.start_game or args.smoke:
@@ -281,6 +308,7 @@ def main():
     if args.screenshot:
         menu.save(args.screenshot)
         return
+    menu.play_battles = not args.instant_battles
     run_window(menu, cached=not args.svg_renderer)
 
 
@@ -324,7 +352,7 @@ def run_window(menu, cached=True):
                 elif event.type == pygame.WINDOWFOCUSLOST:
                     menu.release(menu.host.pointer)
                     menu.text_entry.focus(None)
-            menu.host.clock.step(ticks)
+            menu.step(ticks)
             if menu.fullscreen_requested != fullscreen:
                 fullscreen = menu.fullscreen_requested
                 try:
@@ -338,6 +366,8 @@ def run_window(menu, cached=True):
             screen.blit(frame, (0, 0))
             pygame.display.flip()
     finally:
+        if menu.playback:
+            menu.playback.finish()
         menu.audio.close()
         pygame.quit()
 

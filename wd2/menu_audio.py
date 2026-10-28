@@ -23,6 +23,9 @@ class MenuSound(ASObject):
 
     def attach(self, linkage):
         linkage = string(linkage)
+        if linkage not in self.host.linkages:
+            self.host.events.append({'event': 'missing_linkage', 'linkage': linkage})
+            return U  # The original space sequence requests an absent symbol.
         self.host.asset(linkage)  # Verify against original linkage ID and extraction.
         self.stop()
         self.linkage = linkage
@@ -174,7 +177,7 @@ class PygameMenuAudio:
             if not self.pg.mixer.Channel(slot).get_busy() and self.slots.get(slot) is sound:
                 del self.slots[slot]
                 sound.channel = None
-                self.host.complete(sound)
+                sound.host.complete(sound)
 
     def pause(self, paused):
         self.paused = bool(paused)

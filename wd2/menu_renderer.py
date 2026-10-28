@@ -74,13 +74,19 @@ def edit_fields(document):
 
 class MenuRenderer(SceneRenderer):
     def __init__(self, document, assets, host=None):
-        super().__init__(assets)
+        super().__init__(assets, flash_masks=True)
         self.host = host
         self.fields = edit_fields(document)
         self.font_families = font_families(document)
         self.font_paths = {int(p.name.split('_', 1)[0]): p
                            for p in sorted(asset_directory('fonts').glob('*.ttf'))}
         self.text_cache = {}
+
+    def city_overlays(self, node):
+        # Registered atlas artwork stays intact. Runtime-only effects and the
+        # authored initially-empty overlays still need their original timelines.
+        return [c for c in node.ordered() if c.depth > 28 or
+                (c.name in ('mc', 'bulletHoles', 'propagandaBeams', 'propagandaBeams2', 'citizensMovie') and c.frame > 1)]
 
     def text_metrics(self, node):
         field = self.fields[node.character_id]
