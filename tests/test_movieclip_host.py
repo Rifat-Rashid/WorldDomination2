@@ -17,6 +17,20 @@ def tiny_host():
     return MovieClipHost(Runtime(12), MovieClip(symbols))
 
 
+@pytest.mark.parametrize('invalid', [U, None, float('nan'), 'not a number'])
+def test_invalid_numeric_movieclip_properties_leave_previous_values_unchanged(invalid):
+    # AVM1 display properties ignore null/undefined and numeric coercions to NaN.
+    h = tiny_host()
+    clip = h.rt.invoke(h.root, 'attachMovie', 'test_clip', 'child', 1)
+    for key, value in (('_x', 13), ('_y', 17), ('_xscale', 80),
+                       ('_yscale', 65), ('_rotation', 25), ('_alpha', 40)):
+        clip.set(key, value)
+    before = clip.node.matrix, clip.node.color, clip.node.visible
+    for key in ('_x', '_y', '_xscale', '_yscale', '_rotation', '_alpha', '_visible'):
+        clip.set(key, invalid)
+        assert (clip.node.matrix, clip.node.color, clip.node.visible) == before
+
+
 def test_clip_properties_parent_lookup_transform_and_native_calls():
     h = tiny_host()
     clip = h.rt.invoke(h.root, 'attachMovie', 'test_clip', 'child', 5, obj({'_x': 10, '_y': 20}))

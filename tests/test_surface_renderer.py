@@ -89,6 +89,77 @@ def synthetic():
     return MovieClip(symbols)
 
 
+@pytest.mark.parametrize('invalid', [Matrix(tx=float('nan')), Matrix(a=float('nan')),
+                                   Matrix(ty=float('inf'))])
+def test_nonfinite_subtree_preserves_siblings_and_recovers_when_transform_is_valid(display, invalid):
+    root = synthetic()
+    root.apply(Operation(1, {'character_id': 2}))
+    root.children[1].apply(Operation(1, {'character_id': 2}))
+    group = root.children[1].children[1]
+    group.children[1].matrix = invalid
+    group.apply(Operation(2, {'character_id':1,'matrix':Matrix(tx=12,ty=3)}))
+    root.apply(Operation(2, {'character_id': 1, 'matrix': Matrix(tx=24,ty=3)}))
+    base = SceneRenderer(RectAssets()); cache = SurfaceRenderer(base, display)
+    first = cache.frame(root, (32, 24))
+    assert first.get_at((2,2))[:3] == (0,0,0)
+    assert first.get_at((14,5))[:3] == (255,0,0)
+    compare(first, base.png(root, (32,24)))
+    assert base.report['unsupported'][0]['feature'] == 'nonfinite_transform_not_rendered'
+    assert cache.stats()['invalid_transforms'] >= 1
+    # Unsupported effects still use SVG, with identical invalid-subtree handling.
+    root.children[2].filters = ({'kind':'unsupported'},)
+    compare(cache.frame(root, (32,24)), base.png(root, (32,24)))
+    assert cache.fallback_frames == 1
+    group.children[1].matrix = Matrix(tx=2,ty=2)
+    root.children[2].filters = ()
+    assert cache.frame(root, (32,24)).get_at((3,3))[:3] == (255,0,0)
+    assert cache.stats()['invalid_transforms'] == 0
+
+
+def test_invalid_mask_is_empty_coverage_and_does_not_expose_masked_content(display):
+    root = synthetic()
+    root.apply(Operation(1, {'character_id':1,'clip_depth':2,'matrix':Matrix(tx=float('nan'))}))
+    root.apply(Operation(2, {'character_id':1}))
+    root.apply(Operation(3, {'character_id':1,'matrix':Matrix(tx=12)}))
+    base = SceneRenderer(RectAssets(),flash_masks=True)
+    cache = SurfaceRenderer(base,display)
+    image = compare(cache.frame(root,(32,24)),base.png(root,(32,24)))
+    assert image.getpixel((2,2)) == (0,0,0)
+    assert image.getpixel((14,2)) == (255,0,0)
+
+
+def test_original_city_nan_transform_does_not_crash_or_change_gameplay(display):
+    menu = SetupMenu(0); menu.press('splashScreenMC')
+    menu.press('BTN_allLeaders_screen1'); menu.start_game()
+    clip = next(iter(menu.gameplay.city_clips.values()))
+    city = clip.node
+    original = city.matrix
+    frame = menu.surface(display)
+    from wd2.runtime import U
+    for key in ('_x','_y','_xscale','_yscale','_rotation','_alpha'):
+        clip.set(key,U)
+    assert city.matrix == original and menu.surface(display) is frame
+    city.matrix = Matrix(tx=float('nan'))
+    state, rng = menu.game.snapshot(), menu.rt.rng.getstate()
+    compare(menu.surface(display),menu.png())
+    assert menu._surface_renderer.stats()['invalid_transforms'] >= 1
+    city.matrix = original
+    compare(menu.surface(display),menu.png())
+    assert menu.game.snapshot() == state and menu.rt.rng.getstate() == rng
+
+
+def test_original_dynamic_text_with_invalid_transform_is_reported_and_recovers(display):
+    menu = SetupMenu(0); menu.press('splashScreenMC')
+    field = get(get(menu.root,'gameMenu'),'leaderText')
+    field.set('text','Visible leader')
+    original = field.node.matrix
+    field.node.matrix = Matrix(tx=float('nan'))
+    compare(menu.surface(display),menu.png())
+    assert any(e['feature'] == 'nonfinite_transform_not_rendered' for e in menu.renderer.report['unsupported'])
+    field.node.matrix = original
+    compare(menu.surface(display),menu.png())
+
+
 def test_composed_transforms_masks_color_depth_removal_and_animation_invalidate_cache(display):
     root = synthetic()
     root.apply(Operation(1, {'character_id': 1, 'clip_depth': 3, 'matrix': Matrix(a=.5)}))
