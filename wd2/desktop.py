@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse
 import html
+import io
 import json
 import math
 import os
@@ -10,7 +11,7 @@ import time
 
 from .game import Game
 from .city_layer import CityLayer
-from .resources import asset_directory
+from .resources import asset_directory, read_asset
 from .runtime import get, truth, number, U
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -112,7 +113,8 @@ class Desktop:
             if self.music: self.pg.mixer.music.stop(); self.music=False
             else:
                 track=next(asset_directory('audio').glob('*WDTheme*'))
-                self.pg.mixer.music.load(track); self.pg.mixer.music.play(-1); self.pg.mixer.music.set_volume(.3); self.music=True
+                self._music_stream=io.BytesIO(read_asset(track))
+                self.pg.mixer.music.load(self._music_stream, 'mp3'); self.pg.mixer.music.play(-1); self.pg.mixer.music.set_volume(.3); self.music=True
         except (StopIteration,self.pg.error) as exc: self.notice='Audio unavailable: '+str(exc); self.error=True
 
     def draw(self):

@@ -24,6 +24,11 @@ def check_path(path, allowed):
     return None
 
 
+def decoded_content(path, data):
+    # Review compressed payloads just as strictly as their previous loose files.
+    return gzip.decompress(data) if path.endswith(('.gz', '.svgz')) else data
+
+
 def main():
     allowed = set(json.loads((ROOT / 'public-files.json').read_text(encoding='utf-8')))
     entries = subprocess.check_output(['git', 'ls-files', '--stage', '-z'], cwd=ROOT).decode().split('\0')
@@ -53,8 +58,7 @@ def main():
         offset = end+size+2
         if data.startswith(b'version https://git-lfs.github.com/spec'):
             errors.append(f'{path}: unreviewed LFS pointer')
-        if path.endswith('.json.gz'):
-            data = gzip.decompress(data)
+        data = decoded_content(path,data)
         text = data.decode('utf-8', 'replace')
         wide_text = data[:len(data)//2*2].decode('utf-16-le', 'replace')
         big_endian_text = data[:len(data)//2*2].decode('utf-16-be', 'replace')

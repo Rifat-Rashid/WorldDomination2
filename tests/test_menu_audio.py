@@ -29,6 +29,22 @@ class RecordingBackend:
         pass
 
 
+def test_legacy_music_toggle_plays_compressed_theme_stream(monkeypatch):
+    from wd2.desktop import Desktop
+    monkeypatch.setenv('SDL_AUDIODRIVER','dummy')
+    pygame.mixer.quit(); pygame.mixer.init()
+    desktop = Desktop.__new__(Desktop)
+    desktop.pg, desktop.music = pygame, False
+    try:
+        desktop.toggle_music()
+        assert desktop.music and pygame.mixer.music.get_busy()
+        assert desktop._music_stream.getbuffer().nbytes > 0
+        desktop.toggle_music()
+        assert not desktop.music and not pygame.mixer.music.get_busy()
+    finally:
+        pygame.mixer.quit()
+
+
 def test_splash_music_original_toggle_loop_callback_and_no_rng_change():
     menu = SetupMenu(0)
     audio, rt = menu.audio, menu.rt
@@ -36,7 +52,7 @@ def test_splash_music_original_toggle_loop_callback_and_no_rng_change():
     option = get(menu.model, 'option')
     assert menu.tree.named('splashScreenMC').visible
     assert get(option, 'music') is True and theme.playing
-    assert audio.asset(theme.linkage).name == '2_WDTheme.wav.mp3'
+    assert audio.asset(theme.linkage).name.removesuffix('.gz') == '2_WDTheme.wav.mp3'
     assert isinstance(get(theme, 'onSoundComplete'), ASFunction)
     backend = RecordingBackend()
     audio.connect(backend)
@@ -82,7 +98,7 @@ def test_original_action_sound_mapping_pan_and_effect_toggle_are_separate_from_m
     assert not audio.theme.playing
 
 
-def test_extracted_samples_play_through_mixer_with_isolated_theme_channel(monkeypatch):
+def test_extracted_samples_play_through_mixer_with_isolated_theme_channel(monkeypatch, tmp_path):
     # Real MP3 decoding and channel playback; silent driver keeps CI deterministic.
     monkeypatch.setenv('SDL_AUDIODRIVER', 'dummy')
     pygame.mixer.quit()
@@ -93,6 +109,11 @@ def test_extracted_samples_play_through_mixer_with_isolated_theme_channel(monkey
     try:
         audio.connect(backend)
         sample = backend.samples['WDTheme.wav']
+        from wd2.resources import read_asset
+        loose = tmp_path/'original-theme.mp3'
+        loose.write_bytes(read_asset(audio.asset('WDTheme.wav')))
+        reference = pygame.mixer.Sound(str(loose))
+        assert sample.get_raw() == reference.get_raw()
         assert pygame.mixer.Channel(0).get_busy()
         assert any(sample.get_raw())  # Decoded PCM is not silence.
         from wd2.resources import ROOT

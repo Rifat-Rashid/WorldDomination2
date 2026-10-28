@@ -3,9 +3,11 @@
 Logical sound commands work without a device for deterministic tests/captures.
 Only the interactive window connects a Pygame backend. No game RNG is involved.
 """
+import io
+
 from .runtime import ASObject, NativeClass, U, get, number, string
 from .swf_scene import ROOT
-from .resources import asset_directory
+from .resources import asset_directory, asset_path, read_asset
 
 
 class MenuSound(ASObject):
@@ -79,7 +81,7 @@ class MenuAudio:
 
     def asset(self, linkage):
         if linkage in self.extra_assets:
-            return self.extra_assets[linkage]
+            return asset_path(self.extra_assets[linkage])
         sid = linkage if isinstance(linkage, int) else self.linkages.get(linkage)
         if sid is None:
             raise ValueError(f'Unknown original sound linkage: {linkage}')
@@ -88,7 +90,7 @@ class MenuAudio:
             path = next(asset_directory('audio').glob(f'{sid}.*'), None)
         if path is None:
             raise FileNotFoundError(f'Missing extracted sound {sid}: {linkage}')
-        return path
+        return asset_path(path)
 
     def new_sound(self, owner=U):
         sound = MenuSound(self, owner)
@@ -143,7 +145,7 @@ class PygameMenuAudio:
 
     def sample(self, linkage):
         if linkage not in self.samples:
-            self.samples[linkage] = self.pg.mixer.Sound(str(self.host.asset(linkage)))
+            self.samples[linkage] = self.pg.mixer.Sound(file=io.BytesIO(read_asset(self.host.asset(linkage))))
         return self.samples[linkage]
 
     def start(self, sound):
