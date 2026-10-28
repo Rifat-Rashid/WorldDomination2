@@ -92,6 +92,25 @@ currently supports one target per carrier attack.
 Use `--seed 42` with either mode for reproducible Python sessions; the legacy
 mode also accepts `--difficulty 0`, `1` or `2`.
 
+### iPhone landscape layout preview
+
+```sh
+python iphone_build.py
+python iphone_build.py --start-game --width 896 --height 414
+```
+
+This separate launcher reflows gameplay into independently scrolling navigation
+and equipment panels around the original five-island map. Drag either sidebar
+or use the mouse wheel; tap a row to select it. The center retains the original
+action panels, target selection and battle playback. Filled action buttons at
+the bottom show the queued actions and can cancel them, as in the desktop UI.
+
+Safe areas default to 44 logical points on each side and 21 at the bottom.
+Override them with `--safe-area LEFT TOP RIGHT BOTTOM`. Use `--screenshot PATH`
+with `--start-game` to export a preview. This is a Pygame layout and touch-input
+preview for desktop testing; native iOS packaging and physical-device testing
+are not included. The desktop launcher and gameplay rules are unchanged.
+
 The original SVG renderer remains available with `--svg-renderer`. Screenshot
 exports use that reference path; the live window uses the cached compositor.
 
