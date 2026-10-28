@@ -154,3 +154,24 @@ def test_extracted_samples_play_through_mixer_with_isolated_theme_channel(monkey
     finally:
         audio.close()
         pygame.mixer.quit()
+
+
+def test_named_stop_cancels_all_matching_voices_without_stopping_theme():
+    menu = SetupMenu(0)
+    audio, rt = menu.audio, menu.rt
+    backend = RecordingBackend()
+    audio.connect(backend)
+    first, second = audio.new_sound(), audio.new_sound()
+    for sound in (first, second):
+        sound.attach('unit_Tank.wav')
+        sound.start()
+    before = rt.rng.getstate()
+    rt.invoke(first, 'stop', 'unknown_sound')
+    assert first.playing and second.playing
+    rt.invoke(first, 'stop', 'unit_Tank.wav')
+    assert not first.playing and not second.playing
+    assert audio.theme.playing
+    count = len(backend.starts)
+    audio.complete(first); audio.complete(second)
+    assert len(backend.starts) == count and rt.rng.getstate() == before
+    audio.close()
