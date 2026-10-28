@@ -70,7 +70,9 @@ class SurfaceRenderer:
         text = getattr(node, 'as2_text', {})
         fmt = text.get('_textFormat', U)
         text_key = ('text' in text, str(text.get('text', '')), text.get('textColor', U),
-                    *(get(fmt, p) for p in ('font', 'size', 'color')))
+                    *(get(fmt, p) for p in ('font', 'size', 'color')),
+                    text.get('scroll', 1), text.get('_caret', 0),
+                    bool(text.get('_focused')) and self.renderer.host.clock.ticks//12 % 2 == 0)
         # A timeline frame matters through its current children. Atlas cities
         # override that tree, so their selected registered frame is explicit.
         result = (node.character_id, node.matrix, node.color, node.clip_depth,
@@ -117,7 +119,7 @@ class SurfaceRenderer:
             elif n.symbol.timeline:
                 return all(visit(c, matrix) for c in n.ordered())
             elif n.symbol.kind == 37 and hasattr(self.renderer, 'fields') and 'text' in getattr(n, 'as2_text', {}):
-                if str(n.as2_text['text']) == '':
+                if str(n.as2_text['text']) == '' and not n.as2_text.get('_focused'):
                     return True
                 x, x1, y, y1 = self.renderer.fields[n.character_id]['bounds']
                 w, h = math.ceil(x1-x), math.ceil(y1-y)

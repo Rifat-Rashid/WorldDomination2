@@ -47,6 +47,12 @@ class ClipObject(ASObject):
             '_totalframes': len(node.symbol.timeline.frames) if node.symbol.timeline else 1}
         if key in values:
             return values[key]
+        if node.symbol.kind == 37 and key in ('scroll', 'maxscroll'):
+            maximum = 1
+            if self.host.text_metrics:
+                lines, count = self.host.text_metrics(node)
+                maximum = max(1, len(lines)-count+1)
+            return maximum if key == 'maxscroll' else min(maximum, max(1, int(number(self.props.get('scroll', 1)))))
         if key in ('_xmouse', '_ymouse'):
             matrix = node.world_matrix
             x, y = self.host.pointer
@@ -78,7 +84,7 @@ class ClipObject(ASObject):
         key = string(key)
         return key in self.methods or key in ('_root', '_parent', '_name', '_x', '_y',
             '_xscale', '_yscale', '_rotation', '_visible', '_alpha', '_currentframe',
-            '_totalframes', '_xmouse', '_ymouse', '_width', '_height') or self.node.named(key) is not None or super().has(key)
+            '_totalframes', '_xmouse', '_ymouse', '_width', '_height') or (self.node.symbol.kind == 37 and key in ('scroll', 'maxscroll')) or self.node.named(key) is not None or super().has(key)
 
     def set(self, key, value):
         key = string(key)
@@ -106,13 +112,15 @@ class ClipObject(ASObject):
         elif key in ('_currentframe', '_totalframes', '_parent', '_root'):
             return value  # Read-only Flash properties.
         else:
+            if node.symbol.kind == 37 and key == 'scroll':
+                value = min(self.get('maxscroll'), max(1, int(number(value))))
             super().set(key, value)
             if node.symbol.kind == 37 and key == 'text':
                 self.props['htmlText'] = html.escape(string(value))
             if node.symbol.kind == 37 and key == 'htmlText':
                 text = re.sub(r'<br\s*/?>', '\n', string(value), flags=re.I)
                 self.props['text'] = html.unescape(re.sub('<[^>]*>', '', text))
-            if node.symbol.kind == 37 and key in ('text', 'htmlText', 'textColor', '_textFormat'):
+            if node.symbol.kind == 37 and key in ('text', 'htmlText', 'textColor', '_textFormat', 'scroll'):
                 node.as2_text = self.props
         return value
 
@@ -156,6 +164,7 @@ class MovieClipHost:
         self.clock = PresentationClock(self.frame)
         self.pointer = (0, 0)
         self.geometry = None
+        self.text_metrics = None
         self.mouse_listeners = []
         rt.globals.set('Mouse', obj({'addListener': self.add_mouse_listener,
                                     'removeListener': self.remove_mouse_listener}))

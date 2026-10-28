@@ -44,9 +44,11 @@ Original action controls:
 - Music and Sound switches operate independently. **P** pauses presentation
   and audio; **Escape** closes the window.
 
-Help, fullscreen and end-game presentation are not connected yet. Combat
-resolves through the existing synchronous engine; timed battle animation and
-battle audio synchronization remain unfinished.
+The original Help pages, message scrolling and fullscreen switch are connected.
+Win/loss screens retain the original delayed score sequence; **New Game** returns
+to the title in the same window. Editable text fields accept keyboard input.
+Combat resolves through the existing synchronous engine; timed battle animation
+and battle audio synchronization remain unfinished.
 Presentation uses a 24 Hz logical clock and cached native surfaces. New scene
 states and unsupported effects can take longer to render on some systems.
 
