@@ -100,10 +100,18 @@ python iphone_build.py --start-game --width 896 --height 414
 ```
 
 This separate launcher reflows gameplay into independently scrolling navigation
-and equipment panels around the original five-island map. Drag either sidebar
-or use the mouse wheel; tap a row to select it. The center retains the original
-action panels, target selection and battle playback. Filled action buttons at
-the bottom show the queued actions and can cancel them, as in the desktop UI.
+and equipment panels around the five-island map. Drag either sidebar
+or use the mouse wheel; tap an item to select it. Textured metallic frames,
+navigation icons, grouped equipment cards, score and original action tubes
+follow the landscape layout. Islands and cities keep uniform scaling, with
+wider ocean spacing and matching target coordinates.
+
+Simple actions use a compact accept/cancel strip so the map stays visible.
+**Details** opens the original action panel; **Map** closes the drawer. Production,
+technology, diplomacy and help open their details automatically. Tapping the
+selected navigation item also toggles its details. Filled action tubes show
+queued actions and can cancel them, as in the desktop UI. Original target
+selection and battle playback continue through the same game session.
 
 Safe areas default to 44 logical points on each side and 21 at the bottom.
 Override them with `--safe-area LEFT TOP RIGHT BOTTOM`. Use `--screenshot PATH`

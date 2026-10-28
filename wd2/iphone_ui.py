@@ -67,16 +67,23 @@ class LandscapeUI:
         self.density = min(size[0]/896, size[1]/414)
         self.width, self.height = (round(n/self.density) for n in size)
         left, top, right, bottom = self.safe
-        self.content = pg.Rect(left+6, top+6, self.width-left-right-12, self.height-top-bottom-12)
+        self.content = pg.Rect(left+4, top+4, self.width-left-right-8, self.height-top-bottom-8)
         x,y,w,h = self.content
-        lw, rw, gap = round(w*.20), round(w*.25), 8
+        lw, rw, gap = round(w*.215), round(w*.265), 5
         self.left = pg.Rect(x,y,lw,h)
         self.right = pg.Rect(x+w-rw,y,rw,h)
         self.center = pg.Rect(x+lw+gap,y,w-lw-rw-gap*2,h)
-        self.nav = pg.Rect(x+5,y+66,lw-10,max(44,h-142))
-        self.stock = pg.Rect(self.right.x+5,y+54,rw-10,h-59)
-        self.map = pg.Rect(self.center.x,y+76,self.center.w,h-76-104)
+        header=64;footer=64
+        self.nav_panel=pg.Rect(x,y+header,lw,h-header-80)
+        self.nav = self.nav_panel.inflate(-16,-24);self.nav.y+=4
+        self.stock = pg.Rect(self.right.x+7,y+40,rw-14,h-40-footer-5)
+        self.map_frame=pg.Rect(self.center.x,y+header,self.center.w,h-header-footer-5)
+        self.map=self.map_frame.inflate(-12,-12)
+        self.messages=pg.Rect(self.center.x,self.map_frame.bottom+5,round(self.center.w*.67),footer)
+        self.score=pg.Rect(self.messages.right+4,self.messages.y,self.center.right-self.messages.right-4,footer)
+        self.action_rect=pg.Rect(self.right.x,self.messages.y,self.right.w,footer)
         self.patches, self.targets = [], []
+        self.equipment_cells=[]
 
     def point(self, pixel):
         return pixel[0]/self.density, pixel[1]/self.density
@@ -89,15 +96,20 @@ class LandscapeUI:
     def text(self, screen, text, pos, size=18, color=(219,232,235)):
         screen.blit(self.font(size).render(str(text), True, color), pos)
 
-    def panel(self, screen, rect):
-        self.pg.draw.rect(screen,(23,43,53),rect,border_radius=7)
-        self.pg.draw.rect(screen,(89,118,129),rect,2,border_radius=7)
+    def panel(self, screen, rect, title=None):
+        self.skin.panel(screen,rect,title,self.font(10))
+
+    def label(self, screen, text, rect, size=12, color=(225,233,235), center=False):
+        pg=self.pg;rect=pg.Rect(rect)
+        while size>8 and self.font(size).size(str(text))[0]>rect.w:
+            size-=1
+        image=self.font(size).render(str(text),True,color)
+        position=image.get_rect(center=rect.center) if center else image.get_rect(midleft=(rect.x,rect.centery))
+        previous=screen.get_clip();screen.set_clip(previous.clip(rect));screen.blit(image,position);screen.set_clip(previous)
 
     def button(self, screen, rect, text, action, selected=False):
-        self.pg.draw.rect(screen,(27,78,105) if selected else (32,52,61),rect,border_radius=5)
-        self.pg.draw.rect(screen,(100,130,141),rect,1,border_radius=5)
-        image = self.font(17).render(text,True,(237,244,244))
-        screen.blit(image,image.get_rect(center=rect.center))
+        self.skin.button(screen,rect,selected)
+        self.label(screen,text,rect.inflate(-8,-4),12,center=True)
         self.targets.append((rect.copy(),action))
 
     def crop(self, frame, rect):
@@ -118,134 +130,258 @@ class LandscapeUI:
         self.patches.append(Patch(source,target,clip.copy()))
 
     def draw(self):
-        pg=self.pg; screen=pg.Surface((self.width,self.height))
-        screen.fill((5,12,17)); self.patches=[]; self.targets=[]
+        pg=self.pg;screen=pg.Surface((self.width,self.height));screen.fill((4,9,12))
+        self.patches=[];self.targets=[];self.equipment_cells=[]
         m=self.menu
         if not m.gameplay or (m.lifecycle and m.lifecycle.status):
             self.patch(screen,m.surface(pg),(0,0,800,600),self.content)
             return pg.transform.smoothscale(screen,self.size)
-        # Canonical HUD stays available while the separate battle graph plays.
         from .surface_renderer import SurfaceRenderer
-        cache=getattr(self,'hud_cache',None)
-        if cache is None or cache.renderer is not m.renderer:
+        from .iphone_skin import MobileSkin
+        if not hasattr(self,'skin'):self.skin=MobileSkin(m,pg)
+        if not hasattr(self,'hud_cache') or self.hud_cache.renderer is not m.renderer:
             self.hud_cache=SurfaceRenderer(m.renderer,pg)
         original=self.hud_cache.frame(m.tree)
-        for rect in (self.left,self.center,self.right):self.panel(screen,rect)
-        self.patch(screen,original,(0,0,184,122),pg.Rect(self.left.x+5,self.left.y+4,self.left.w-10,58))
+        self.panel(screen,self.content)
+        logo=pg.Rect(self.left.x,self.left.y,self.left.w,62)
+        self.skin.panel(screen,logo)
+        self.patch(screen,self.skin.source,(4,12,174,102),logo.inflate(-14,-5))
+        self.draw_portraits(screen,original)
         self.draw_navigation(screen,original)
         self.draw_equipment(screen,original)
-        self.patch(screen,original,(202,4,380,112),pg.Rect(self.center.x+4,self.center.y+4,self.center.w-8,68))
-        pg.draw.rect(screen,(8,48,75),self.map)
+        self.panel(screen,self.map_frame)
+        self.draw_map(screen)
+        # Simple actions keep the map visible. Complex source workflows are
+        # available in a deliberate drawer instead of replacing the whole map.
+        action=get(m.model,'userSelectedActionBtn')
         center=get(m.gameplay.interface,'centerScreen').node
-        if not m.playback and center.frame!=1:
+        if action!=getattr(self,'last_action',None):
+            self.details_open=action in ('production','research','diplomacy','help')
+            self.last_action=action
+        if not m.playback and center.frame!=1 and getattr(self,'details_open',False):
+            self.panel(screen,self.map_frame)
             self.patch(screen,original,(205,135,365,275),self.map)
-        else:
-            self.draw_map(screen)
+            back=pg.Rect(self.map.right-52,self.map.y+2,50,22)
+            self.button(screen,back,'MAP',lambda:setattr(self,'details_open',False))
         self.draw_footer(screen,original)
         return pg.transform.smoothscale(screen,self.size)
 
+    def draw_portraits(self,screen,original):
+        pg=self.pg
+        header=pg.Rect(self.center.x,self.center.y,self.center.w,62)
+        self.panel(screen,header)
+        width=min(84,(header.w-16)//4)
+        start=header.centerx-width*2
+        for i in range(4):
+            dest=pg.Rect(start+i*width,header.y+3,width-3,51)
+            self.skin.panel(screen,dest)
+            # Faces retain uniform sampling; the surround can widen independently.
+            self.patch(screen,original,(211+i*93,18,61,65),dest.inflate(-10,-5))
+            color=((213,58,44),(229,150,38),(43,164,198),(229,208,34))[i]
+            pg.draw.line(screen,color,(dest.x+8,dest.y+2),(dest.right-9,dest.y+2),2)
+        strip=pg.Rect(header.x+6,header.bottom-12,header.w-12,10)
+        self.patch(screen,original,(207,95,360,17),strip)
+
     def draw_map(self,screen):
         from .surface_renderer import SurfaceRenderer
+        from .iphone_map import IslandCamera
         m=self.menu;scene=m.active_scene
         battle=m.playback.battle.node if m.playback else m.gameplay.battle.node
-        cache=getattr(self,'map_cache',None)
-        if cache is None or cache.renderer is not scene.renderer:
+        if not hasattr(self,'map_cache') or self.map_cache.renderer is not scene.renderer:
             self.map_cache=SurfaceRenderer(scene.renderer,self.pg)
-        # Draw the existing battle subtree into a wider camera. Only a copy of
-        # the root transform changes; every island, sprite and animation keeps
-        # its authored local coordinates and one common scale.
-        scale=min(self.map.w/800,self.map.h/600)
-        view=copy(battle)
-        view.matrix=Matrix(a=scale*2,d=scale*2,tx=(self.map.w-800*scale))
-        frame=self.map_cache.frame(view,(self.map.w*2,self.map.h*2),(8,48,75))
-        screen.blit(self.pg.transform.smoothscale(frame,self.map.size),self.map)
-        source_w=self.map.w/scale*.46
-        source=self.pg.FRect(205-(source_w-368)/2,135,source_w,276)
-        # Camera mapping uses floating-point rectangles to avoid shifting city
-        # hit tests when the viewport changes by a single pixel.
-        self.patches.append(Patch(source,self.pg.FRect(self.map),self.map.copy()))
+        self.camera=IslandCamera(self.map,m)
+        view=self.camera.tree(battle)
+        # The original water symbol contains only inter-island strips, so lay
+        # an authored ocean swatch underneath the widened gaps, then composite
+        # the unchanged terrain textures with premultiplied alpha.
+        pg=self.pg
+        water=pg.transform.smoothscale(self.skin.crop((358,159,48,50)),self.map.size)
+        screen.blit(water,self.map)
+        self.map_cache._signatures={};self.map_cache.invalid_transforms=set()
+        size=(self.map.w*2,self.map.h*2)
+        layer=pg.Surface(size,pg.SRCALPHA)
+        terrain=getattr(self,'terrain_cache',{})
+        for node in view.ordered():
+            if not node.name.startswith('land0'):continue
+            key=(self.map.size,self.map_cache.signature(node),view.matrix)
+            if key not in terrain:
+                from PIL import Image
+                sprite,position=self.map_cache.paint(node,(view,),0,size)
+                if not sprite.get_width() or not sprite.get_height():continue
+                image=Image.frombytes('RGBA',sprite.get_size(),pg.image.tobytes(sprite,'RGBA'))
+                from PIL import ImageChops, ImageFilter
+                mask=Image.new('L',image.size)
+                values=[]
+                for r,g,b,a in getattr(image,'get_flattened_data',image.getdata)():
+                    blue=min(b-r-12,b-g-4)
+                    values.append(round(255*(1-max(0,min(1,blue/14)))))
+                mask.putdata(values)
+                # Remove one-pixel grid/water remnants without changing the
+                # basis or aspect of the terrain artwork.
+                mask=mask.filter(ImageFilter.MedianFilter(3))
+                image=Image.merge('RGBA',tuple(ImageChops.multiply(band,mask) for band in image.split()))
+                terrain[key]=(pg.image.frombytes(image.tobytes(),image.size,'RGBA'),position)
+            sprite,position=terrain[key];layer.blit(sprite,position,special_flags=pg.BLEND_PREMULTIPLIED)
+        # Keep only the current camera's terrain entries (bounded across resize).
+        self.terrain_cache={key:value for key,value in terrain.items() if key[0]==self.map.size}
+        overlay=copy(view)
+        overlay.children={n.depth:n for n in view.ordered() if not n.name.startswith('land0') and n.character_id not in (5259,5260) and not n.name.startswith(('water_overlay_','citypos','swp','twp'))}
+        sprite,position=self.map_cache.paint(overlay,(),0,size)
+        layer.blit(sprite,position,special_flags=pg.BLEND_PREMULTIPLIED)
+        layer=pg.transform.smoothscale(layer,self.map.size)
+        screen.blit(layer,self.map,special_flags=pg.BLEND_PREMULTIPLIED)
+        self.patches.append(self.camera)
 
-    def draw_navigation(self, screen, original):
-        pg=self.pg; pane=self.navigation; row=48
+    def draw_navigation(self,screen,original):
+        pg=self.pg;pane=self.navigation;row=44
+        self.panel(screen,self.nav_panel,'MAIN PANEL')
         pane.limit=max(0,len(self.labels)*row-self.nav.h);pane.move(0)
+        actions=('resources','production','research','religion','attack','preAttack','defense','propaganda','diplomacy')
         previous=screen.get_clip();screen.set_clip(self.nav)
         for i,label in enumerate(self.labels):
-            rect=pg.Rect(self.nav.x,self.nav.y+i*row-round(pane.offset),self.nav.w-7,44)
+            rect=pg.Rect(self.nav.x,self.nav.y+i*row-round(pane.offset),self.nav.w-7,40)
             if not rect.colliderect(self.nav):continue
-            # Original metallic button and its selected state, with a readable
-            # label laid over the center and a 44-point target per menu item.
-            src=pg.Rect(8,141+i*30,165,27)
-            screen.blit(pg.transform.smoothscale(self.crop(original,src),rect.size),rect)
-            selected=get(self.menu.model,'userSelectedActionBtn')==('resources','production','research','religion','attack','preAttack','defense','propaganda','diplomacy')[i]
-            pg.draw.rect(screen,(24,73,96) if selected else (29,44,51),rect.inflate(-10,-10),border_radius=3)
-            self.text(screen,label,(rect.x+9,rect.y+14),17)
-            self.targets.append((rect.clip(self.nav),lambda i=i:self.menu.press(f'btn{i+1}')))
-        screen.set_clip(previous);self.scrollbar(screen,self.nav,pane,len(self.labels)*row)
-        info=pg.Rect(self.left.x+5,self.nav.bottom+7,self.left.w-10,self.left.bottom-self.nav.bottom-12)
-        self.patch(screen,original,(7,432,165,85),info)
+            selected=get(self.menu.model,'userSelectedActionBtn')==actions[i]
+            self.skin.button(screen,rect,selected)
+            icon_rect=pg.Rect(rect.x+4,rect.y+5,30,30)
+            screen.blit(self.skin.icon(actions[i],28),(icon_rect.x,icon_rect.y))
+            self.label(screen,label.upper(),pg.Rect(rect.x+38,rect.y,rect.w-42,rect.h),12)
+            self.targets.append((rect.clip(self.nav),lambda i=i:self.choose_action(i)))
+        screen.set_clip(previous)
+        self.scrollbar(screen,self.nav,pane,len(self.labels)*row)
+        info=pg.Rect(self.left.x,self.nav_panel.bottom+5,self.left.w,self.left.bottom-self.nav_panel.bottom-5)
+        self.panel(screen,info,'INFO PANEL')
+        self.draw_stats(screen,info)
 
-    def draw_equipment(self, screen, original):
+    def choose_action(self,index):
+        action=('resources','production','research','religion','attack','preAttack','defense','propaganda','diplomacy')[index]
+        if get(self.menu.model,'userSelectedActionBtn')==action:
+            self.details_open=not getattr(self,'details_open',False)
+        else:
+            self.menu.press(f'btn{index+1}')
+
+    def draw_stats(self,screen,rect):
+        pg=self.pg;m=self.menu;human=m.game.human
+        inner=rect.inflate(-14,-17);inner.y+=4
+        self.skin.well(screen,inner)
+        labels=('FUNDS','technology','propaganda','population','spy')
+        funds=f'$ {round(get(human,"turnMoney")*1000000):,}'
+        row=max(10,inner.h//5)
+        for i,name in enumerate(labels):
+            y=inner.y+i*row
+            self.label(screen,name,pg.Rect(inner.x+4,y,inner.w*.43,row),10)
+            if not i:
+                self.label(screen,funds,pg.Rect(inner.x+inner.w*.43,y,inner.w*.55,row),10,(255,215,0))
+                continue
+            x=inner.x+inner.w*.47;w=inner.w*.49
+            pg.draw.rect(screen,(5,13,17),(x,y+3,w,row-5))
+            bar=get(self.menu.gameplay.interface,f'statBar{i}')
+            mask=get(bar,'statMask');value=get(mask,'_xscale')
+            value=0 if value is U else max(0,min(100,value))
+            for t in range(max(0,round(w*value/100))):
+                f=t/max(1,w);pg.draw.line(screen,(255,round(45+190*f),0),(x+t,y+3),(x+t,y+row-3))
+
+    def draw_equipment(self,screen,original):
         pg=self.pg
-        self.button(screen,pg.Rect(self.right.x+5,self.right.y+5,(self.right.w-15)//2,44),'Help',lambda:self.menu.press('btn_help'))
-        self.button(screen,pg.Rect(self.right.centerx+2,self.right.y+5,(self.right.w-15)//2,44),'Full screen',self.toggle_fullscreen)
+        toolbar=pg.Rect(self.right.x,self.right.y,self.right.w,34);self.panel(screen,toolbar)
+        self.button(screen,pg.Rect(toolbar.x+7,toolbar.y+6,toolbar.w*.35,23),'HELP',lambda:self.menu.press('btn_help'))
+        self.button(screen,pg.Rect(toolbar.x+toolbar.w*.39,toolbar.y+6,toolbar.w*.44,23),'FULL SCREEN',self.toggle_fullscreen)
+        gear=pg.Rect(toolbar.right-26,toolbar.y+5,23,24)
+        screen.blit(self.skin.icon('gear',23),(gear.x,gear.y));self.targets.append((gear,lambda:self.menu.press('btn38')))
+        frame=self.stock.inflate(12,10);self.panel(screen,frame)
         buttons=[b for b in get(self.menu.gameplay.hud,'stockBtn_arr') if b is not U]
-        rows=[];group=None;y=0
-        for b in buttons:
-            section=get(b,'stockPanelNum')
-            if section!=group:
-                rows.append(('heading',self.groups[int(section)-1],y));y+=28;group=section
-            rows.append(('button',b,y));y+=48
+        sections=[]
+        for group in range(1,9):
+            members=[b for b in buttons if get(b,'stockPanelNum')==group]
+            sections.append((group,members))
+        # Two-column categories follow the source inventory order. Wide carrier
+        # labels retain a full row. All item cells are separate click targets.
+        rows=[];y=0
+        for group,members in sections:
+            columns=1 if group==3 else 2
+            height=26+math.ceil(len(members)/columns)*36+6
+            rows.append((group,members,columns,y,height));y+=height+5
         pane=self.equipment;pane.limit=max(0,y-self.stock.h);pane.move(0)
         previous=screen.get_clip();screen.set_clip(self.stock)
-        for kind,item,offset in rows:
-            rect=pg.Rect(self.stock.x,self.stock.y+offset-round(pane.offset),self.stock.w-7,44 if kind=='button' else 26)
-            if not rect.colliderect(self.stock):continue
-            if kind=='heading':
-                self.text(screen,item,(rect.x+3,rect.y+5),18);continue
-            bounds=self.menu.renderer.control_bounds(get(item,'overlayMC').node)
-            src=pg.Rect(math.floor(bounds[0]),math.floor(bounds[1]),math.ceil(bounds[2]-bounds[0]),24)
-            pg.draw.rect(screen,(14,28,35),rect,border_radius=4)
-            # Preserve the original label, stock display and metallic selector.
-            texture=self.crop(original,(10,141,130,27))
-            screen.blit(pg.transform.smoothscale(texture,rect.size),rect)
-            pg.draw.rect(screen,(24,43,53),rect.inflate(-8,-8),border_radius=3)
-            amount=get(item,'_stockAmount')
-            enabled=amount is not U and amount>=0
-            color=(223,233,235) if enabled else (126,144,151)
-            label=str(get(item,'label'))
-            self.text(screen,label,(rect.x+8,rect.y+13),15,color)
-            count=pg.Rect(rect.right-47,rect.y+8,39,28)
-            pg.draw.rect(screen,(8,22,29),count,border_radius=4)
-            pg.draw.rect(screen,(93,126,140),count,1,border_radius=4)
-            image=self.font(17).render(str(amount) if enabled else '-',True,color)
-            screen.blit(image,image.get_rect(center=count.center))
-            path=control_path(get(item,'overlayMC').node)
-            self.targets.append((rect.clip(self.stock),lambda path=path:self.menu.press(path)))
+        for group,members,columns,offset,height in rows:
+            card=pg.Rect(self.stock.x,self.stock.y+offset-round(pane.offset),self.stock.w-8,height)
+            if not card.colliderect(self.stock):continue
+            self.panel(screen,card)
+            self.label(screen,self.groups[group-1],pg.Rect(card.x+37,card.y+3,card.w-44,22),12)
+            icon=('rocket','plane','ship','warhead','bio','attack','spy','defense')[group-1]
+            screen.blit(self.skin.icon(icon,30),(card.x+5,card.y+27))
+            body_x=card.x+38;body_w=card.w-43
+            for index,item in enumerate(members):
+                # Source rows alternate columns rather than sorting by label.
+                if columns==2:
+                    row=index%2 if len(members)>2 else 0
+                    col=index//2 if len(members)>2 else index
+                else:row=index;col=0
+                rect=pg.Rect(body_x+col*body_w/columns,card.y+25+row*36,body_w/columns,36)
+                amount=get(item,'_stockAmount');enabled=amount is not U and amount>=0
+                color=(219,231,236) if enabled else (122,145,155)
+                count=pg.Rect(rect.right-24,rect.y+5,22,24)
+                self.skin.well(screen,count)
+                self.label(screen,str(amount) if enabled else '-',count,12,color,center=True)
+                self.label(screen,str(get(item,'label')),pg.Rect(rect.x+1,rect.y,rect.w-27,rect.h),10,color)
+                path=control_path(get(item,'overlayMC').node)
+                hit=rect.clip(self.stock)
+                self.targets.append((hit,lambda path=path:self.menu.press(path)))
+                self.equipment_cells.append((get(item,'relatedWeapon'),hit))
         screen.set_clip(previous);self.scrollbar(screen,self.stock,pane,y)
 
     def scrollbar(self,screen,rect,pane,total):
         if not pane.limit:return
-        track=self.pg.Rect(rect.right-5,rect.y,4,rect.h)
-        self.pg.draw.rect(screen,(9,20,26),track,border_radius=2)
-        height=max(18,rect.h*rect.h/total)
-        thumb=self.pg.Rect(track.x,track.y+(rect.h-height)*pane.offset/pane.limit,4,height)
-        self.pg.draw.rect(screen,(146,164,166),thumb,border_radius=2)
+        pg=self.pg;track=pg.Rect(rect.right-5,rect.y+4,4,rect.h-8)
+        pg.draw.rect(screen,(5,14,19),track,border_radius=2)
+        height=max(22,track.h*rect.h/total)
+        thumb=pg.Rect(track.x,track.y+(track.h-height)*pane.offset/pane.limit,4,height)
+        pg.draw.rect(screen,(142,164,176),thumb,border_radius=2)
+        for y,sign in ((rect.top,1),(rect.bottom,-1)):
+            pg.draw.polygon(screen,(201,214,219),[(rect.right-8,y+sign*6),(rect.right-2,y+sign*6),(rect.right-5,y+sign*1)])
 
     def draw_footer(self,screen,original):
         pg=self.pg;m=self.menu
-        y=self.map.bottom+5
-        messages=[get(msg,'_msg') for msg in get(m.game.human,'shortMSG_arr') if truth(get(msg,'_msg'))]
-        if not messages:messages=['Choose two actions, then confirm.']
-        clip=pg.Rect(self.center.x+5,y,self.center.w-10,46)
-        previous=screen.get_clip();screen.set_clip(clip)
-        for i,line in enumerate(messages[-2:]):
-            self.text(screen,str(line).replace('<br />',' '),(clip.x,clip.y+i*19),16,(57,242,35))
-        screen.set_clip(previous)
-        width=(self.center.w-20)//3
-        for i,(label,name) in enumerate((('First action','btn44'),('Second action','btn45'),('Confirm','btn46'))):
-            action=get(get(m.game.human,'turnActionArr')[i],'action') if i<2 else U
-            caption=str(action).replace('preAttack','Prepared').title() if truth(action) else label
-            self.button(screen,pg.Rect(self.center.x+5+i*(width+5),self.center.bottom-49,width,44),caption,lambda name=name:m.press(name),truth(action))
+        self.panel(screen,self.messages)
+        well=self.messages.inflate(-12,-12);self.skin.well(screen,well)
+        action=get(m.model,'userSelectedActionBtn')
+        center=get(m.gameplay.interface,'centerScreen').node
+        pending=center.frame!=1 and truth(action) and not m.playback
+        if pending and not getattr(self,'details_open',False):
+            self.label(screen,str(action).replace('religion','Mass media').upper(),pg.Rect(well.x+4,well.y+1,well.w-8,18),11,(62,246,40))
+            for i,(caption,fn) in enumerate((('DETAILS',lambda:setattr(self,'details_open',True)),('CANCEL',lambda:m.press('btnCancel')),('ACCEPT',lambda:m.press('btnAccept')))):
+                rect=pg.Rect(well.x+3+i*(well.w-6)/3,well.bottom-25,(well.w-12)/3,22)
+                self.button(screen,rect,caption,fn)
+        else:
+            messages=[get(msg,'_msg') for msg in get(m.game.human,'shortMSG_arr') if truth(get(msg,'_msg'))]
+            text=' '.join(str(line).replace('<br />',' ') for line in messages[-2:]) or 'Choose two actions, then confirm.'
+            words=text.split();lines=[];line=''
+            for word in words:
+                candidate=(line+' '+word).strip()
+                if self.font(11).size(candidate)[0]>well.w-12 and line:lines.append(line);line=word
+                else:line=candidate
+            if line:lines.append(line)
+            for i,line in enumerate(lines[-3:]):
+                self.label(screen,line,pg.Rect(well.x+5,well.y+4+i*14,well.w-10,14),11,(61,242,32))
+        self.panel(screen,self.score,'SCORE')
+        count=self.score.inflate(-12,-25);count.y+=5;self.skin.well(screen,count)
+        self.label(screen,str(round(get(m.game.human,'score'))),count,14,center=True)
+        self.panel(screen,self.action_rect,'NEXT ACTION')
+        rect=self.action_rect.inflate(-10,-15);rect.y+=5
+        width=round((rect.w-32)/2)
+        for i,name in enumerate(('btn44','btn45')):
+            target=pg.Rect(rect.x+i*(width+2),rect.y,width,rect.h)
+            self.label(screen,'FIRST ACTION' if i==0 else 'SECOND ACTION',pg.Rect(target.x,target.y,target.w,10),8,center=True)
+            art=pg.Rect(target.x,target.y+10,target.w,target.h-11)
+            screen.blit(pg.transform.smoothscale(self.crop(original,(216+i*149,544,140,44)),art.size),art)
+            action=get(get(m.game.human,'turnActionArr')[i],'action')
+            if truth(action):self.label(screen,str(action).replace('religion','Media').upper(),target.inflate(-8,-16),9,(255,194,63),center=True)
+            self.targets.append((target,lambda name=name:m.press(name)))
+        confirm=pg.Rect(rect.right-28,rect.y,28,rect.h)
+        self.label(screen,'CONFIRM',pg.Rect(confirm.x-2,confirm.y,32,10),7,center=True)
+        art=pg.Rect(confirm.x,confirm.y+10,confirm.w,confirm.h-11)
+        screen.blit(pg.transform.smoothscale(self.crop(original,(515,541,47,50)),art.size),art)
+        self.targets.append((confirm,lambda:m.press('btn46')))
 
     def toggle_fullscreen(self):
         self.menu.fullscreen_requested=not self.menu.fullscreen_requested
@@ -259,9 +395,10 @@ class LandscapeUI:
     def down(self,pixel,now):
         p=self.point(pixel)
         pane=self.navigation if self.nav.collidepoint(p) else self.equipment if self.stock.collidepoint(p) else None
-        self.gesture={'start':p,'last':p,'time':now,'pane':pane,'drag':False}
+        custom=next(((rect,fn) for rect,fn in reversed(self.targets) if rect.collidepoint(p)),None)
+        self.gesture={'start':p,'last':p,'time':now,'pane':pane,'drag':False,'custom':custom}
         if pane:pane.velocity=0
-        elif self.stage(p) is not None:
+        elif custom is None and self.stage(p) is not None:
             self.menu.motion(self.stage(p));self.menu.click(self.stage(p))
 
     def motion(self,pixel,now):
@@ -283,8 +420,8 @@ class LandscapeUI:
         if not g:return
         if not g['drag'] and math.dist(p,g['start'])<=10:
             # Scroll panels activate on release, so swipes never select a weapon.
-            for rect,action in reversed(self.targets):
-                if rect.collidepoint(p):action();break
+            custom=g.get('custom')
+            if custom and custom[0].collidepoint(p):custom[1]()
         self.menu.release(self.stage(p) or self.menu.host.pointer)
 
     def wheel(self,pixel,amount):
