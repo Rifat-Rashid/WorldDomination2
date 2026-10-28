@@ -46,7 +46,14 @@ class MenuSound(ASObject):
             self.host.backend.start(self)
         return U
 
-    def stop(self):
+    def stop(self, linkage=U):
+        if linkage is not U:
+            # AVM1's named form stops every instance of that exported sound.
+            name = string(linkage)
+            for sound in self.host.sounds:
+                if sound.linkage == name:
+                    sound.stop()
+            return U
         if self.host.backend:
             self.host.backend.stop(self)
         if self.playing:
