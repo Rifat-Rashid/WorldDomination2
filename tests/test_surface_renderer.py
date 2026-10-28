@@ -183,3 +183,28 @@ def test_cached_gameplay_keeps_24hz_callbacks_and_authored_animation(display):
     assert pygame.image.tobytes(menu.surface(display), 'RGB') != first
     compare(menu.surface(display), menu.png())
     assert game.snapshot() == state and game.rt.rng.getstate() == rng
+
+
+def test_integer_motion_reuses_registered_raster_and_preserves_fractional_edges(display, monkeypatch):
+    root = synthetic()
+    root.apply(Operation(1, {'character_id': 1, 'matrix': Matrix(tx=3.25, ty=5.5)}))
+    base = SceneRenderer(RectAssets()); cache = SurfaceRenderer(base, display)
+    compare(cache.frame(root, (64, 64)), base.png(root, (64, 64)))
+    count = cache.rasterizations
+    for x in (4.25, 18.25, -1.75, 25.25):
+        root.children[1].matrix = Matrix(tx=x, ty=5.5)
+        compare(cache.frame(root, (64, 64)), base.png(root, (64, 64)))
+    assert cache.rasterizations == count
+
+
+def test_flash_timeline_mask_ignores_alpha_and_color_but_inspector_retains_export_mode(display):
+    root = synthetic()
+    root.apply(Operation(1, {'character_id': 1, 'clip_depth': 2,
+                             'color': ColorTransform((0,0,0,.2))}))
+    root.apply(Operation(2, {'character_id': 1}))
+    flash = SceneRenderer(RectAssets(), flash_masks=True)
+    cache = SurfaceRenderer(flash, display)
+    image = compare(cache.frame(root, (24,16)), flash.png(root, (24,16)))
+    assert image.getpixel((3,3)) == (255,0,0)
+    legacy = SceneRenderer(RectAssets())
+    assert Image.open(io.BytesIO(legacy.png(root,(24,16)))).getpixel((3,3))[0] < 255

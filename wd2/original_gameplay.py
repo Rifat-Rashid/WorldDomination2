@@ -44,11 +44,24 @@ class PresentedGame(Game):
         # Preserve the existing headless turn contract: visual intervals are
         # omitted during resolution, not replayed later by the presentation clock.
         saved = {key: get(self.rt.globals, key) for key in ('setInterval', 'clearInterval')}
+        callback = getattr(self, 'on_turn_results', None)
+        had_results = 'turnResults' in self.presenter.props
+        source_results = get(self.presenter, 'turnResults')
+        if callback:
+            def capture():
+                self.rt.call(source_results, self.presenter, [])
+                callback(self)
+            self.presenter.set('turnResults', capture)
         self.rt.globals.set('setInterval', self.host.interval)
         self.rt.globals.set('clearInterval', lambda *args: U)
         try:
             return super().advance()
         finally:
+            if callback:
+                if had_results:
+                    self.presenter.set('turnResults', source_results)
+                else:
+                    self.presenter.delete('turnResults')
             for key, value in saved.items():
                 self.rt.globals.set(key, value)
 
@@ -160,11 +173,21 @@ class OriginalGameplay:
                 or not truth(get(self.game.human, 'alive'))
                 or truth(get(self.game.human, 'diplomacyPendingArr')[0])):
             return
-        self.game.advance()  # Exactly one synchronous turn; no impact replay.
+        owner = getattr(self, 'owner', None)
+        if owner and owner.play_battles:
+            from .battle_playback import PresentationSnapshot
+            self.game.on_turn_results = lambda game: setattr(owner, '_battle_snapshot', PresentationSnapshot(game))
+        try:
+            self.game.advance()  # Exactly one synchronous canonical resolution.
+        finally:
+            self.game.on_turn_results = None
         self.actions.after_turn()
         self.refresh()
-        owner = getattr(self, 'owner', None)
-        if owner and owner.lifecycle:
+        if owner and owner.play_battles:
+            from .battle_playback import BattlePlayback
+            owner.playback = BattlePlayback(owner, owner._battle_snapshot)
+            del owner._battle_snapshot
+        elif owner and owner.lifecycle:
             owner.lifecycle.check()
 
     def refresh(self):

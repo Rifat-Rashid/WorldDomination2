@@ -47,8 +47,11 @@ Original action controls:
 The original Help pages, message scrolling and fullscreen switch are connected.
 Win/loss screens retain the original delayed score sequence; **New Game** returns
 to the title in the same window. Editable text fields accept keyboard input.
-Combat resolves through the existing synchronous engine; timed battle animation
-and battle audio synchronization remain unfinished.
+Live turns play the recovered battle timelines, moving units, city transitions
+and sound before returning to the same session. The gameplay engine computes
+each outcome once; animation uses isolated presentation state. Use
+`--instant-battles` to return immediately. Screenshot/smoke mode also resolves
+immediately for reproducible checks.
 Presentation uses a 24 Hz logical clock and cached native surfaces. New scene
 states and unsupported effects can take longer to render on some systems.
 
@@ -87,6 +90,12 @@ about 605 ms to 14 ms after warm-up. These measurements exclude window pacing an
 are not hardware input-latency measurements. A cold scene still takes about one
 second to populate caches. Surface storage is bounded to 64 MiB, in addition to
 the original asset definitions. Actual performance depends on hardware.
+
+An additional 24-frame battle sample measured about 395 ms per frame through
+SVG and 18 ms through the cached compositor after warm-up. Sprites reuse their
+registered rasters when moving by whole pixels; fractional positioning and
+transforms remain part of the cache key. Cold frames and new effects can still
+miss the 41.7 ms budget.
 
 ## Validation
 

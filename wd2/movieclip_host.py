@@ -7,7 +7,7 @@ import html
 
 from .display_list import Matrix, MovieClip, Operation, Symbol, Timeline
 from .presentation_clock import PresentationClock
-from .runtime import ASObject, ASFunction, U, get, number, string, truth, obj
+from .runtime import ASObject, ASClass, ASFunction, U, get, number, string, truth, obj
 
 
 class ClipObject(ASObject):
@@ -23,12 +23,81 @@ class ClipObject(ASObject):
             'nextFrame': lambda: host.goto(node, min(node.frame+1, self.get('_totalframes')), False),
             'prevFrame': lambda: host.goto(node, max(1, node.frame-1), False),
             'getDepth': lambda: node.depth,
+            'swapDepths': self.swap_depths,
+            'localToGlobal': lambda point: self.convert_point(point, False),
+            'globalToLocal': lambda point: self.convert_point(point, True),
+            'clear': self.clear_graphics,
+            'moveTo': lambda x, y: self._move_to(x, y),
+            'lineStyle': self.line_style,
+            'lineTo': self.line_to,
             'getNextHighestDepth': lambda: max(node.children, default=-1)+1,
             'attachMovie': self.attach,
             'createEmptyMovieClip': lambda name, depth: self.attach(host.empty_id, name, depth),
             'removeMovieClip': self.remove,
             'setTextFormat': lambda fmt: self.set('_textFormat', fmt),
         }
+
+    def swap_depths(self, target):
+        node, parent = self.node, self.node.parent
+        if parent is None:
+            return U
+        if isinstance(target, ClipObject):
+            if target.node.parent is not parent:
+                return U
+            depth = target.node.depth
+        else:
+            value = number(target)
+            if not math.isfinite(value):
+                return U
+            depth = int(value)
+        old, other = node.depth, parent.children.get(depth)
+        if old == depth:
+            return U
+        parent.children.pop(old, None)
+        if other is not None:
+            other.depth = old
+            parent.children[old] = other
+        node.depth = depth
+        parent.children[depth] = node
+        return U
+
+    def convert_point(self, point, inverse):
+        m = self.node.world_matrix
+        x, y = number(get(point, 'x')), number(get(point, 'y'))
+        if inverse:
+            x, y = x-m.tx, y-m.ty
+            det = m.a*m.d-m.b*m.c
+            if not det:
+                return U
+            x, y = (m.d*x-m.c*y)/det, (m.a*y-m.b*x)/det
+        else:
+            x, y = m.point(x, y)
+        point.set('x', x); point.set('y', y)
+        return U
+
+    def clear_graphics(self):
+        self.node.graphics = []
+        self.pen_position = (0, 0)
+        self.pen_style = None
+        return U
+
+    def _move_to(self, x, y):
+        self.pen_position = number(x), number(y)
+        return U
+
+    def line_style(self, width=U, color=0, alpha=100, *unused):
+        self.pen_style = None if width is U else (max(1, number(width)), int(number(color)) & 0xffffff, number(alpha)/100)
+        return U
+
+    def line_to(self, x, y):
+        end = number(x), number(y)
+        style = getattr(self, 'pen_style', None)
+        if style is not None:
+            if not hasattr(self.node, 'graphics'):
+                self.node.graphics = []
+            self.node.graphics.append((getattr(self, 'pen_position', (0, 0)), end, style))
+        self.pen_position = end
+        return U
 
     def _play(self, playing):
         self.node.playing = playing
@@ -127,12 +196,10 @@ class ClipObject(ASObject):
     def attach(self, linkage, name, depth, init=U):
         sid = linkage if isinstance(linkage, int) else self.host.linkages.get(string(linkage))
         if sid not in self.node.symbols:
-            raise ValueError(f'Unknown linkage: {linkage}')
+            self.host.missing_linkages.add(string(linkage))
+            return U  # Flash attachMovie fails without replacing the depth.
         self.node.apply(Operation(int(number(depth)), {'character_id': sid, 'name': string(name)}))
-        child = self.host.wrap(self.node.children[int(number(depth))])
-        if isinstance(init, ASObject):
-            for key in init.keys():
-                child.set(key, get(init, key))
+        child = self.host.wrap(self.node.children[int(number(depth))], init)
         self.host.enter(child.node)
         return child
 
@@ -146,6 +213,7 @@ class ClipObject(ASObject):
 class MovieClipHost:
     def __init__(self, rt, root, script_symbols=()):
         self.rt, self.tree = rt, root
+        self.class_bindings = {}
         self.objects = weakref.WeakValueDictionary()
         self.entered = weakref.WeakKeyDictionary()
         self.script_symbols = set(script_symbols)
@@ -155,6 +223,7 @@ class MovieClipHost:
             if match:
                 self.scripts.setdefault((int(match[1]), int(match[2])), []).append((int(match[3] or 1), fn))
         self.linkages = {s.linkage: sid for sid, s in root.symbols.items() if s.linkage}
+        get(rt.globals, 'Object').props['registerClass'] = self.register_class
         self.empty_id = min(root.symbols)-1
         root.symbols[self.empty_id] = Symbol(self.empty_id, 39, timeline=Timeline())
         self.root = self.wrap(root)
@@ -165,6 +234,7 @@ class MovieClipHost:
         self.pointer = (0, 0)
         self.geometry = None
         self.text_metrics = None
+        self.missing_linkages = set()
         self.mouse_listeners = []
         rt.globals.set('Mouse', obj({'addListener': self.add_mouse_listener,
                                     'removeListener': self.remove_mouse_listener}))
@@ -186,13 +256,33 @@ class MovieClipHost:
             if listener in self.mouse_listeners:
                 self.rt.invoke(listener, event)
 
-    def wrap(self, node):
+    def wrap(self, node, init=U):
         if node is None:
             return U
         key = id(node)
         if key not in self.objects:
-            self.objects[key] = ClipObject(self, node)
+            clip = ClipObject(self, node)
+            self.objects[key] = clip
+            cls = self.class_bindings.get(node.symbol.linkage)
+            if cls:
+                clip.cls = cls
+                for base in reversed(cls.lineage()):
+                    base.initialize_fields()
+            if isinstance(init, ASObject):
+                for name in init.keys():
+                    clip.set(name, get(init, name))
+            if cls:
+                constructor = cls.methods.get(cls.name)
+                if constructor:
+                    self.rt.call(constructor, clip, [])
         return self.objects[key]
+
+    def register_class(self, linkage, cls):
+        linkage = string(linkage)
+        if linkage not in self.linkages or not isinstance(cls, ASClass):
+            return False
+        self.class_bindings[linkage] = cls
+        return True
 
     def attached(self, node):
         while node.parent:

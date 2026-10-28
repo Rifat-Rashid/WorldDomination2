@@ -76,10 +76,10 @@ class SurfaceRenderer:
         # A timeline frame matters through its current children. Atlas cities
         # override that tree, so their selected registered frame is explicit.
         result = (node.character_id, node.matrix, node.color, node.clip_depth,
-                node.ratio, freeze(node.filters), node.blend_mode, freeze(node.extras),
+                node.ratio, freeze(node.filters), node.blend_mode, freeze(node.extras), freeze(getattr(node, 'graphics', ())),
                 node.frame if node.character_id in self.city_ids else None, text_key,
                 tuple((c.depth, self.signature(c)) for c in node.ordered())
-                if node.character_id not in self.city_ids else ())
+                if node.character_id not in self.city_ids else tuple((c.depth, self.signature(c)) for c in self.renderer.city_overlays(node)))
         self._signatures[id(node)] = result
         return result
 
@@ -110,12 +110,18 @@ class SurfaceRenderer:
             if n.color.add[3]:
                 return False  # Alpha addition can reveal a filter's padding.
             matrix = parent_matrix @ n.matrix
+            for start, end, style in getattr(n, 'graphics', ()):
+                padding = style[0]/2
+                for x, y in (start, end):
+                    points.extend(matrix.point(x+dx, y+dy) for dx, dy in ((-padding,-padding),(padding,padding)))
             if n.character_id in self.city_ids:
                 state = self.renderer.assets.cities[n.character_id]['frames'].get(str(n.frame))
                 if state is None:
                     return False
                 x, y = state['offset']
                 w, h = state['crop'][2]-state['crop'][0], state['crop'][3]-state['crop'][1]
+                if not all(visit(c, matrix) for c in self.renderer.city_overlays(n)):
+                    return False
             elif n.symbol.timeline:
                 return all(visit(c, matrix) for c in n.ordered())
             elif n.symbol.kind == 37 and hasattr(self.renderer, 'fields') and 'text' in getattr(n, 'as2_text', {}):
@@ -153,7 +159,8 @@ class SurfaceRenderer:
         self.rasterizations += 1
         # Preserve original stage coordinates while encoding only the pixels
         # this sprite can occupy, rather than an 800x600 mostly-empty PNG.
-        svg = ET.fromstring(self.renderer.svg(partial, size, None))
+        source = self.renderer.mask_svg if as_mask else self.renderer.svg
+        svg = ET.fromstring(source(partial, size, None))
         if as_mask:
             # Ask the reference SVG path for the effective mask coverage,
             # including its antialiasing and mask-type interpretation.
@@ -185,6 +192,37 @@ class SurfaceRenderer:
             cached = surface, position
             self.layers.put(key, cached)
         return cached
+
+    def translated_sprite(self, node, ancestors, size):
+        """Reuse exact raster pixels when only integer stage translation changes.
+
+        Keep fractional registration, scale/rotation, text, color and children in
+        the key. Large/edge-clipped geometry stays on the existing SVG path.
+        """
+        matrix = Matrix()
+        for parent in ancestors:
+            matrix = matrix @ parent.matrix
+        matrix = matrix @ node.matrix
+        if not all(math.isfinite(v) for v in (matrix.tx, matrix.ty)):
+            return self.raster(node, ancestors, size)
+        x, y = math.floor(matrix.tx), math.floor(matrix.ty)
+        origin = size[0]//2, size[1]//2
+        view = copy(node)
+        view.matrix = Matrix(matrix.a, matrix.b, matrix.c, matrix.d,
+                             origin[0]+round(matrix.tx-x, 10), origin[1]+round(matrix.ty-y, 10))
+        # This temporary view shares descendants but never changes the live tree.
+        self._signatures.pop(id(view), None)
+        key = ('registered_sprite', size, self.signature(view))
+        self._signatures.pop(id(view), None)
+        cached = self.layers.get(key)
+        if cached is None:
+            bounds = self.bounds(view, (), size)
+            if not bounds or bounds.left <= 0 or bounds.top <= 0 or bounds.right >= size[0] or bounds.bottom >= size[1]:
+                return self.raster(node, ancestors, size)
+            cached = self.raster(view, (), size)
+            self.layers.put(key, cached)
+        surface, position = cached
+        return surface, (position[0]+x-origin[0], position[1]+y-origin[1])
 
     def clipped(self, paint, mask):
         surface, position = paint
@@ -218,9 +256,9 @@ class SurfaceRenderer:
         if cached is not None:
             return cached
         if (level >= 2 or not node.symbol.timeline or node.character_id in self.city_ids
-                or node.color != ColorTransform()):
+                or node.color != ColorTransform() or getattr(node, 'graphics', ())):
             # SVG retains precise affine rasterization and group color effects.
-            cached = self.raster(node, ancestors, size)
+            cached = self.translated_sprite(node, ancestors, size)
         else:
             paints, masks = [], []
             for child in node.ordered():

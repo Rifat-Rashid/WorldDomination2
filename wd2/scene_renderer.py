@@ -97,10 +97,15 @@ class SVGAssets:
 
 
 class SceneRenderer:
-    def __init__(self, assets=None):
+    def __init__(self, assets=None, flash_masks=False):
         self.assets = assets or SVGAssets()
+        self.flash_masks = flash_masks
+
+    def city_overlays(self, node):
+        return ()
 
     def svg(self, root, size=(800, 600), background=(0, 0, 0)):
+        self._stencil = getattr(self, '_force_stencil', False)
         self.report = {'mode': 'uninitialized_timeline_state', 'unsupported': [],
                        'unexecuted_scripts': [], 'rendered_leaf_instances': 0,
                        'unique_leaf_assets': 0, 'masks': 0}
@@ -116,6 +121,39 @@ class SceneRenderer:
         svg.append(self._node(root, '_root'))
         self.report['unique_leaf_assets'] = len(self._loaded)
         return ET.tostring(svg, encoding='unicode')
+
+    def mask_svg(self, root, size=(800, 600), background=None):
+        self._force_stencil = self.flash_masks
+        try:
+            return self.svg(root, size, background)
+        finally:
+            self._force_stencil = False
+
+    def leaf_asset(self, node):
+        suffix = '_stencil' if self._stencil else ''
+        asset_id = f'asset_{node.character_id}'+suffix
+        key = node.character_id, suffix
+        if key not in self._loaded:
+            asset = copy.deepcopy(self.assets.load(node.symbol))
+            if self._stencil:
+                ids = {e.get('id'): e.get('id')+suffix for e in asset.iter() if e.get('id')}
+                for e in asset.iter():
+                    for attribute, value in list(e.attrib.items()):
+                        if attribute == 'id':
+                            e.set(attribute, ids[value])
+                        else:
+                            for old, new in ids.items():
+                                value = value.replace(f'url(#{old})', f'url(#{new})')
+                                if value == '#'+old:
+                                    value = '#'+new
+                            e.set(attribute, value)
+                    if e.get('fill') != 'none':
+                        e.set('fill', '#ffffff')
+                    e.set('fill-opacity', '1'); e.set('opacity', '1')
+                    e.set('stroke', 'none')
+            self.defs.append(asset)
+            self._loaded.add(key)
+        return asset_id
 
     def _issue(self, node, path, feature):
         key = (node.character_id, feature)
@@ -137,7 +175,7 @@ class SceneRenderer:
         if node.symbol.timeline and node.symbol.timeline.actions.get(node.frame):
             self.report['unexecuted_scripts'].append({'path': path, 'character_id': node.character_id,
                 'frame': node.frame, 'offsets': node.symbol.timeline.actions.get(node.frame, [])})
-        if node.color != ColorTransform():
+        if node.color != ColorTransform() and not self._stencil:
             self._serial += 1
             fid = f'color_{self._serial}'
             filt = element('filter', {'id': fid, 'color-interpolation-filters': 'sRGB'})
@@ -151,6 +189,11 @@ class SceneRenderer:
             group.append(colored)
         else:
             colored = group
+        for start, end, style in getattr(node, 'graphics', ()):
+            width, color, alpha = style
+            colored.append(element('path', {'d': f'M {start[0]} {start[1]} L {end[0]} {end[1]}',
+                'fill': 'none', 'stroke': f'#{color:06x}', 'stroke-width': str(width),
+                'stroke-opacity': str(alpha), 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}))
         try:
             city_art = self.assets.city_frame(node) if hasattr(self.assets, 'city_frame') else None
         except NotImplementedError as error:
@@ -159,11 +202,19 @@ class SceneRenderer:
         if city_art is not None:
             colored.append(city_art)
             self.report['rendered_leaf_instances'] += 1
+            for child in self.city_overlays(node):
+                colored.append(self._node(child, path+'/'+(child.name or f'#{child.depth}')))
         elif node.symbol.timeline:
             masks = []
             for child in node.ordered():
                 child_path = path + '/' + (child.name or f'#{child.depth}')
-                content = self._node(child, child_path)
+                stencil = self._stencil
+                if self.flash_masks and child.clip_depth > child.depth:
+                    self._stencil = True
+                try:
+                    content = self._node(child, child_path)
+                finally:
+                    self._stencil = stencil
                 masks = [(end, mid) for end, mid in masks if end >= child.depth]
                 if child.clip_depth > child.depth:
                     self._serial += 1
@@ -183,10 +234,8 @@ class SceneRenderer:
                     colored.append(content)
         else:
             try:
-                if node.character_id not in self._loaded:
-                    self.defs.append(self.assets.load(node.symbol))
-                    self._loaded.add(node.character_id)
-                colored.append(element('use', {f'{{{XLINK}}}href': f'#asset_{node.character_id}'}))
+                asset_id = self.leaf_asset(node)
+                colored.append(element('use', {f'{{{XLINK}}}href': '#'+asset_id}))
                 self.report['rendered_leaf_instances'] += 1
             except NotImplementedError as error:
                 self._issue(node, path, str(error))
