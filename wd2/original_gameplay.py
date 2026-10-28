@@ -123,7 +123,6 @@ class OriginalGameplay:
         self.rt = game.rt
         self.interface = get(host.root, 'interfaceMC')
         self.battle = get(host.root, 'battleMC')
-        self.selected_action = None
         self.city_clips = {}
         self.hud = self.rt.new('View_interface', self.interface)
         self.rt.globals.set('view_interface', self.hud)
@@ -143,45 +142,22 @@ class OriginalGameplay:
         for name in ('introMovie', 'splashScreenMC', 'gameMenu', 'endGameMC', 'full_version_MC'):
             get(host.root, name).set('_visible', False)
         self.interface.set('_visible', True)
-        for index, action in [(1, 'resources'), (4, 'religion')]:
-            get(self.interface, f'btn{index}').set('onPress', lambda a=action: self.select(a))
-        # Unsupported action controls are inert rather than entering unbound workflows.
-        for i in (2, 3, 5, 6, 7, 8, 9):
-            get(self.interface, f'btn{i}').delete('onPress')
-        get(self.interface, 'btn46').set('onPress', self.resolve)
-        get(self.interface, 'btn38').set('onPress', lambda: self.rt.invoke(self.presenter, 'btnPressed_option', 'sound', True))
-        get(self.interface, 'btn39').set('onPress', lambda: self.rt.invoke(self.presenter, 'btnPressed_option', 'music', True))
+        from .action_entry import ActionEntry
+        self.actions = ActionEntry(self)
         self.refresh()
 
-    def select(self, action):
-        if not truth(self.rt.invoke(self.game.human, 'getNextTurnAction')):
-            return
-        self.selected_action = action
-        self.rt.invoke(self.rt.globals, 'play_sound_by_action', 'interface_actionBtn_on')
-        self.game.model.set('userSelectedActionBtn', action)
-        center = get(self.interface, 'centerScreen')
-        self.rt.invoke(center, 'gotoAndStop', action)
-        self.rt.invoke(self.presenter, 'update_centerScreenContent')
-        get(center, 'btnAccept').set('onPress', self.accept)
-        get(center, 'btnCancel').set('onPress', self.cancel)
-
-    def accept(self):
-        if self.selected_action is None:
-            return
-        self.game.queue(self.selected_action)
-        self.rt.invoke(self.rt.globals, 'play_sound_by_action', 'interface_acceptAction_btn')
-        self.selected_action = None
-        self.game.model.set('userSelectedActionBtn', U)
-        self.refresh()
-
-    def cancel(self):
-        self.selected_action = None
-        self.rt.invoke(get(self.interface, 'centerScreen'), 'gotoAndStop', 1)
+    @property
+    def selected_action(self):
+        value = get(self.game.model, 'userSelectedActionBtn')
+        return value if truth(value) else None
 
     def resolve(self):
-        if not truth(get(self.game.human, 'allActionsSet')):
+        if (not truth(get(self.game.human, 'allActionsSet'))
+                or not truth(get(self.game.human, 'alive'))
+                or truth(get(self.game.human, 'diplomacyPendingArr')[0])):
             return
-        self.game.advance()  # Exactly one existing synchronous turn path; no impact replay.
+        self.game.advance()  # Exactly one synchronous turn; no impact replay.
+        self.actions.after_turn()
         self.refresh()
 
     def refresh(self):
@@ -193,19 +169,6 @@ class OriginalGameplay:
         r.invoke(self.presenter, 'update_top_plrColor')
         r.invoke(self.presenter, 'update_color_dots')
         r.invoke(self.hud, 'update_highScore', get(g.human, 'score'))
-        self.hud.set('shortMSG_text', get(g.human, 'shortMSG_arr'))
-        messages = get(self.interface, 'shortMSG_textField')
-        messages.set('text', f"TURN {get(g.model, 'turn')} | YOUR NATION: {get(g.human, 'playerColor')}\n"+str(get(messages, 'text')))
-        for stock in get(self.hud, 'stockBtn_arr'):
-            if stock is U:
-                continue
-            weapon = r.invoke(get(g.human, 'weaponStock'), 'getWeaponByName', get(stock, 'relatedWeapon'))
-            stock.set('stockAmount', get(weapon, 'inStock') if weapon is not U and truth(get(weapon, 'active')) else -1)
-            get(stock, 'overlayMC').delete('onPress')
-        for index, action in ((1, 'resources'), (4, 'religion')):
-            button = get(self.hud, 'actionBtn_arr')[index]
-            button.set('isSetAction', any(get(ta, 'action') == action for ta in get(g.human, 'turnActionArr')))
-            button.set('pressed', self.selected_action == action)
         for i in range(1, 5):
             player = g.players[i]
             if player is U:
@@ -223,27 +186,9 @@ class OriginalGameplay:
                 clip.set('_xscale', 80)
                 clip.set('_yscale', 80)
                 r.invoke(clip, 'gotoAndStop', get(get(city, 'image'), '_currentframe'))
-        for i, ta in enumerate(get(g.human, 'turnActionArr'), 1):
-            label = get(ta, 'action')
-            tube = get(self.hud, f'actionTube{i}')
-            tube.set('associatedTA', ta)
-            tube.set('state', 'set' if truth(label) else 'closed')
-            # Synchronize the authored settled state; transitions remain available
-            # to the presentation clock without delaying synchronous game turns.
-            mc = get(tube, 'tubeMC')
-            r.invoke(mc, 'gotoAndStop', 11 if truth(label) else 1)
-            mc.delete('onEnterFrame')
-        ready = truth(get(g.human, 'allActionsSet'))
-        # Source hatch frames; keeping it explicit avoids an unbound battle interval.
-        r.invoke(get(self.interface, 'actionHatch3'), 'gotoAndStop', 12 if ready else 1)
-        r.invoke(get(self.interface, 'btn46'), 'gotoAndStop', 1 if ready else 2)
+        self.actions.update()
         self.interface.set('turn', get(g.model, 'turn'))
         self.interface.set('activePlayer', get(g.human, 'playerNum'))
-        if self.selected_action is None:
-            r.invoke(get(self.interface, 'centerScreen'), 'gotoAndStop', 1)
 
     def controls(self):
-        nodes = [self.interface.node.named(f'btn{i}') for i in (1, 4, 38, 39, 46)]
-        center = get(self.interface, 'centerScreen').node
-        nodes += [center.named('btnAccept'), center.named('btnCancel')]
-        return [n for n in nodes if n is not None]
+        return self.actions.controls()

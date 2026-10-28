@@ -136,6 +136,7 @@ class SetupMenu:
         self.rt, self.host, self.tree, self.root = game.rt, host, tree, host.root
         self.model, self.menu_model, self.presenter = game.model, menu_model, presenter
         self.renderer = MenuRenderer(self.document, self.renderer.assets, host)
+        host.geometry = self.renderer.assets.bounds
         self.hovered = None
         self.last_error = None
         return game
@@ -145,10 +146,7 @@ class SetupMenu:
         if name == 'btn_start':
             return self.start_game()
         if self.gameplay:
-            node = next((n for n in self.gameplay.controls() if n.name == name), None)
-            if node:
-                return self.host.dispatch(node, 'onPress')
-            return U
+            return self.gameplay.actions.press(name)
         node = self.tree.named('splashScreenMC') if name == 'splashScreenMC' else self.tree.named('gameMenu').named(name)
         if node is None:
             raise ValueError(f'No setup control {name}')
@@ -166,11 +164,7 @@ class SetupMenu:
 
     def control_at(self, pos):
         if self.gameplay:
-            for node in reversed(self.gameplay.controls()):
-                bounds = self.renderer.control_bounds(node)
-                if node.visible and bounds and bounds[0] <= pos[0] <= bounds[2] and bounds[1] <= pos[1] <= bounds[3]:
-                    return node.name
-            return None
+            return self.gameplay.actions.control_at(pos, self.renderer)
         if self.tree.named('splashScreenMC').visible:
             return 'splashScreenMC'
         if not self.tree.named('gameMenu').visible:
@@ -182,13 +176,14 @@ class SetupMenu:
         return None
 
     def click(self, pos):
+        self.host.pointer = pos
         name = self.control_at(pos)
         if name:
             self.press(name)
 
     def motion(self, pos):
         if self.gameplay:
-            return
+            return self.gameplay.actions.motion(pos, self.renderer)
         name = self.control_at(pos)
         if name != self.hovered:
             menu = self.tree.named('gameMenu')
@@ -197,6 +192,9 @@ class SetupMenu:
             if name and menu.named(name):
                 self.host.dispatch(menu.named(name), 'onRollOver')
             self.hovered = name
+
+    def release(self, pos):
+        self.host.mouse_event('onMouseUp', pos)
 
     def snapshot(self):
         if self.game:
@@ -215,7 +213,7 @@ class SetupMenu:
         report = {'state': self.snapshot(), 'rendering': self.renderer.report,
                   'audio': {'theme': self.audio.theme.linkage, 'music_enabled': get(get(self.model, 'option'), 'music'),
                             'device_connected': self.audio.backend is not None},
-                  'scope': 'Recovered setup and original HUD; synchronous existing game engine, Resources and Mass Media controls.'}
+                  'scope': 'Recovered setup, original action entry and HUD; synchronous existing game engine.'}
         path.with_suffix('.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
 
 
@@ -275,6 +273,10 @@ def run_window(menu, cached=True):
                     menu.click(event.pos)
                 elif event.type == pygame.MOUSEMOTION:
                     menu.motion(event.pos)
+                elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                    menu.release(event.pos)
+                elif event.type == pygame.WINDOWFOCUSLOST:
+                    menu.release(menu.host.pointer)
             menu.host.clock.step(ticks)
             frame = menu.surface(pygame) if cached else pygame.image.load(io.BytesIO(menu.png()))
             screen.blit(frame, (0, 0))
