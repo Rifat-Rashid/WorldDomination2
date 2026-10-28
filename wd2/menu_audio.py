@@ -74,13 +74,18 @@ class MenuAudio:
         self.theme = None
         self.backend = None
         self.paused = False
+        self.extra_assets = {}
         rt.globals.set('Sound', NativeClass(self.new_sound))
 
     def asset(self, linkage):
-        sid = self.linkages.get(linkage)
+        if linkage in self.extra_assets:
+            return self.extra_assets[linkage]
+        sid = linkage if isinstance(linkage, int) else self.linkages.get(linkage)
         if sid is None:
             raise ValueError(f'Unknown original sound linkage: {linkage}')
         path = next(asset_directory('audio').glob(f'{sid}_*'), None)
+        if path is None:
+            path = next(asset_directory('audio').glob(f'{sid}.*'), None)
         if path is None:
             raise FileNotFoundError(f'Missing extracted sound {sid}: {linkage}')
         return path
