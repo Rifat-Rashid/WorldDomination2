@@ -116,6 +116,7 @@ class SetupMenu:
         self.opening = None
         self.opening_enabled = False
         self.intro_sound = None
+        self.interface_sequence = None
         from .text_entry import TextEntry
         self.text_entry = TextEntry(self)
         self.host.text_metrics = self.renderer.text_metrics
@@ -125,6 +126,8 @@ class SetupMenu:
             self.fullscreen_requested = str(value).lower() == 'true'
 
     def restart(self):
+        if self.interface_sequence:
+            self.interface_sequence.cancel()
         backend, state, playback_enabled = self.audio.backend, self.rt.rng.getstate(), self.play_battles
         opening_enabled = self.opening_enabled
         self.audio.close()
@@ -175,6 +178,12 @@ class SetupMenu:
             self.intro_sound.stop()
             self.intro_sound = None
 
+    def begin_interface_sequence(self, initial=False):
+        from .interface_sequence import InterfaceSequence
+        if self.interface_sequence:
+            self.interface_sequence.cancel()
+        self.interface_sequence = InterfaceSequence(self,initial)
+
     def start_game(self):
         if self.game is not None:
             return self.game
@@ -207,6 +216,8 @@ class SetupMenu:
         self.last_error = None
         from .lifecycle import Lifecycle
         self.lifecycle = Lifecycle(self)
+        if self.play_battles:
+            self.begin_interface_sequence(initial=True)
         return game
 
     def press(self, name):
@@ -260,6 +271,8 @@ class SetupMenu:
         if not self.playback:
             self.host.clock.step(ticks)
             self.finish_intro_audio()
+            if self.interface_sequence and self.interface_sequence.done:
+                self.interface_sequence = None
             return
         self.playback.host.clock.paused = self.host.clock.paused
         before = self.playback.host.clock.ticks
@@ -269,7 +282,9 @@ class SetupMenu:
         if self.playback.done:
             self.playback = None
             self.lifecycle.check()
-            self.host.clock.step(ticks-elapsed)
+            if not self.lifecycle.status:
+                self.begin_interface_sequence()
+            self.step(ticks-elapsed)
 
     def surface(self, pygame):
         from .surface_renderer import SurfaceRenderer

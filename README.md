@@ -4,8 +4,9 @@ An unofficial standalone Python reconstruction of the Flash strategy game.
 The original splash screen, setup menu, map, city artwork and gameplay HUD run
 without Flash, a browser or the original SWF.
 
-This is a partial reconstruction. Original gameplay rules and AI run through
-translated Python classes; interface restoration is still in progress.
+The original gameplay rules and AI run through translated Python classes, with
+the original setup, action controls and presentation. Rendering and timing still
+have fidelity differences; pixel-perfect equivalence is not claimed.
 
 <p>
   <img src="docs/screenshots/splash.png" alt="Reconstructed World Domination II splash screen" width="400" />
