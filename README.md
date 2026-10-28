@@ -7,6 +7,11 @@ without Flash, a browser or the original SWF.
 This is a partial reconstruction. Original gameplay rules and AI run through
 translated Python classes; interface restoration is still in progress.
 
+<p>
+  <img src="docs/screenshots/splash.png" alt="Reconstructed World Domination II splash screen" width="400" />
+  <img src="docs/screenshots/resources.png" alt="Reconstructed gameplay interface with Resources selected" width="400" />
+</p>
+
 ## Install and launch
 
 Use Python 3.12 or newer on Windows or Linux:

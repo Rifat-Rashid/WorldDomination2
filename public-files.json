@@ -2228,6 +2228,8 @@
   "assets/runtime/texts/5943.svg",
   "assets/runtime/texts/5944.svg",
   "assets/runtime/texts/5945.svg",
+  "docs/screenshots/resources.png",
+  "docs/screenshots/splash.png",
   "public-files.json",
   "pytest.ini",
   "requirements-dev.txt",
