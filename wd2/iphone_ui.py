@@ -177,8 +177,12 @@ class LandscapeUI:
             self.skin.panel(screen,dest)
             # Faces retain uniform sampling; the surround can widen independently.
             self.patch(screen,original,(211+i*93,18,61,65),dest.inflate(-10,-5))
-            color=((213,58,44),(229,150,38),(43,164,198),(229,208,34))[i]
-            pg.draw.line(screen,color,(dest.x+8,dest.y+2),(dest.right-9,dest.y+2),2)
+            # Retain live authored color/population and relationship meters;
+            # their colors and fill levels must follow the selected opponents.
+            top=pg.Rect(dest.x+7,dest.y+2,dest.w-14,2)
+            screen.blit(pg.transform.smoothscale(self.crop(original,(208+i*93,9,68,5)),top.size),top)
+            meter=pg.Rect(dest.right-7,dest.y+8,3,dest.h-15)
+            self.patch(screen,original,(278+i*93,16,8,72),meter)
         strip=pg.Rect(header.x+6,header.bottom-12,header.w-12,10)
         self.patch(screen,original,(207,95,360,17),strip)
 
