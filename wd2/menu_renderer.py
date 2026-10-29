@@ -3,6 +3,7 @@ import base64
 import io
 import math
 from functools import lru_cache
+from collections import OrderedDict
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -80,7 +81,20 @@ class MenuRenderer(SceneRenderer):
         self.font_families = font_families(document)
         self.font_paths = {int(p.name.split('_', 1)[0]): p
                            for p in sorted(asset_directory('fonts').glob('*.ttf*'))}
-        self.text_cache = {}
+        self.text_cache = OrderedDict()
+        self.text_cache_bytes = 0
+
+    def cache_text(self, key, value):
+        size = len(value[2]) + len(key[1].encode('utf-8'))
+        old = self.text_cache.pop(key,None)
+        if old is not None:
+            self.text_cache_bytes -= len(old[2]) + len(key[1].encode('utf-8'))
+        while self.text_cache and (len(self.text_cache)>=256 or self.text_cache_bytes+size>8*1024**2):
+            old_key, old = self.text_cache.popitem(last=False)
+            self.text_cache_bytes -= len(old[2]) + len(old_key[1].encode('utf-8'))
+        if size<=8*1024**2:
+            self.text_cache[key]=value
+            self.text_cache_bytes+=size
 
     def city_overlays(self, node):
         # Registered atlas artwork stays intact. Runtime-only effects and the
@@ -160,7 +174,8 @@ class MenuRenderer(SceneRenderer):
         scroll = max(1, int(props.get('scroll', 1)))
         focused = props.get('_focused', False) and self.host and (self.host.clock.ticks//12) % 2 == 0
         key = (node.character_id, text, font_size, color, font_path.name, scroll, bool(focused), props.get('_caret', 0))
-        if key not in self.text_cache:
+        cached = self.text_cache.get(key)
+        if cached is None:
             x0, x1, y0, y1 = field['bounds']
             scale = 4
             width, height = math.ceil(x1-x0), math.ceil(y1-y0)
@@ -185,8 +200,11 @@ class MenuRenderer(SceneRenderer):
                 draw.line((cx, 3*scale, cx, (font_size+5)*scale), fill=color, width=scale)
             stream = io.BytesIO()
             image.save(stream, format='PNG')
-            self.text_cache[key] = (width, height, 'data:image/png;base64,'+base64.b64encode(stream.getvalue()).decode('ascii'))
-        width, height, href = self.text_cache[key]
+            cached = (width, height, 'data:image/png;base64,'+base64.b64encode(stream.getvalue()).decode('ascii'))
+            self.cache_text(key,cached)
+        else:
+            self.text_cache.move_to_end(key)
+        width, height, href = cached
         self.color_group(node,group).append(element('image', {'x': str(field['bounds'][0]), 'y': str(field['bounds'][2]),
             'width': str(width), 'height': str(height), f'{{{XLINK}}}href': href}))
         self.report['rendered_leaf_instances'] += 1

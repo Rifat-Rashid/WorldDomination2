@@ -29,6 +29,43 @@ class RecordingBackend:
         pass
 
 
+def test_discarded_sounds_release_owners_but_reusable_sounds_keep_named_stop():
+    import gc,weakref
+    from wd2.runtime import obj
+    menu=SetupMenu(0);audio=menu.audio
+    retained=audio.new_sound();retained.attach('WDTheme.wav');retained.start()
+    owner=obj();owner_ref=weakref.ref(owner)
+    sound=audio.new_sound(owner);sound_ref=weakref.ref(sound);sound.stop()
+    del sound,owner;gc.collect()
+    assert sound_ref() is None and owner_ref() is None
+    assert retained in audio.sounds and retained.playing
+    audio.theme.stop('WDTheme.wav')
+    assert not retained.playing and not audio.theme.playing
+    retained.start();assert retained.playing
+    for _ in range(1500):retained.stop();retained.start()
+    assert len(audio.events)<=1024 and audio.events[-1]['event']=='start'
+    menu.audio.close()
+
+
+def test_turn_transition_releases_transient_sound_clips():
+    import gc, weakref
+    menu=SetupMenu(0)
+    menu.press('splashScreenMC');menu.press('BTN_allLeaders_screen1');menu.start_game()
+    refs=[]
+    for _ in range(3):
+        for _ in range(10):menu.press('btn1');menu.press('btn1')
+        records=list(get(menu.model,'playedSounds_arr'))
+        refs.extend(weakref.ref(get(record,'soundObj')) for record in records)
+        refs.extend(weakref.ref(get(record,'mc')) for record in records)
+        del records
+        menu.game.queue('religion');menu.game.queue('resources')
+        menu.press('btn46');gc.collect()
+        assert not len(get(menu.model,'playedSounds_arr'))
+        assert all(ref() is None for ref in refs)
+        assert menu.audio.theme in menu.audio.sounds
+    menu.audio.close()
+
+
 def test_legacy_music_toggle_plays_compressed_theme_stream(monkeypatch):
     from wd2.desktop import Desktop
     monkeypatch.setenv('SDL_AUDIODRIVER','dummy')
