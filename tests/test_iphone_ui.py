@@ -107,15 +107,15 @@ def test_real_event_loop_routes_touch_drag_and_wheel_without_ghost_taps(ui, monk
 
 def test_simple_action_keeps_map_and_accept_strip_visible(ui):
     from wd2.iphone_map import IslandCamera
-    tap(ui,(ui.nav.centerx,ui.nav.y+20));ui.draw()
-    assert get(ui.menu.model,'userSelectedActionBtn')=='resources'
+    tap(ui,(ui.nav.centerx,ui.nav.y+3*44+20));ui.draw()
+    assert get(ui.menu.model,'userSelectedActionBtn')=='religion'
     assert not ui.details_open
     assert any(isinstance(p,IslandCamera) for p in ui.patches)
     assert ui.map.h>ui.content.h*.55
     # Source accept callback is exposed in the compact strip, not a screenshot.
     target=next(rect for rect,fn in ui.targets if ui.messages.contains(rect) and rect.centerx>ui.messages.centerx+ui.messages.w*.2)
     tap(ui,target.center)
-    assert get(get(ui.menu.game.human,'turnActionArr')[0],'action')=='resources'
+    assert get(get(ui.menu.game.human,'turnActionArr')[0],'action')=='religion'
 
 
 def test_filled_tube_cancels_once_without_queuing_skip(ui):
@@ -127,6 +127,41 @@ def test_filled_tube_cancels_once_without_queuing_skip(ui):
     ui.up(pos,.1)
     from wd2.runtime import U
     assert get(get(ui.menu.game.human,'turnActionArr')[0],'action') is U
+
+
+def test_mobile_resources_matches_desktop_open_cancel_queue_and_income(ui):
+    desktop=SetupMenu(0);desktop.press('splashScreenMC')
+    for i in range(1,5):desktop.press(f'BTN_allLeaders_screen{i}')
+    desktop.start_game()
+    try:
+        for command in ('btn1','btn1','btn1','btnCancel','btn1','btnAccept','btn1','btn1','btnAccept','btn4','btnAccept','btn46'):
+            if command in ('btn1','btn4'):tap(ui,(ui.nav.centerx,ui.nav.y+(0 if command=='btn1' else 3*44)+20))
+            elif command=='btn46':tap(ui,ui.targets[-1][0].center)
+            elif command=='btnAccept' and not ui.details_open:
+                target=next(rect for rect,fn in ui.targets if ui.messages.contains(rect) and rect.centerx>ui.messages.centerx+ui.messages.w*.2)
+                tap(ui,target.center)
+            else:
+                node=ui.menu.gameplay.actions.find(command)
+                x0,y0,x1,y1=ui.menu.renderer.control_bounds(node)
+                patch=next(p for p in ui.patches if getattr(p,'source',None) is not None and p.source.w==365)
+                point=(patch.target.x+((x0+x1)/2-patch.source.x)*patch.target.w/patch.source.w,
+                       patch.target.y+((y0+y1)/2-patch.source.y)*patch.target.h/patch.source.h)
+                tap(ui,point)
+            desktop.press(command);ui.draw()
+            assert ui.menu.game.snapshot()['players']==desktop.game.snapshot()['players']
+            assert ui.menu.game.snapshot()['turn']==desktop.game.snapshot()['turn']
+            assert ui.menu.rt.rng.getstate()==desktop.rt.rng.getstate()
+            assert get(ui.menu.model,'userSelectedActionBtn')==get(desktop.model,'userSelectedActionBtn')
+            center=get(ui.menu.gameplay.interface,'centerScreen')
+            other=get(desktop.gameplay.interface,'centerScreen')
+            assert center.node.frame==other.node.frame
+            if get(ui.menu.model,'userSelectedActionBtn')=='resources':
+                assert ui.details_open
+                assert not any(ui.map.contains(rect) for rect,fn in ui.targets)
+                for name in ('text1','text2','textFunds'):
+                    assert get(get(center,name),'text')==get(get(other,name),'text')
+        assert ui.menu.game.snapshot()['turn']==1
+    finally:desktop.audio.close()
 
 
 def test_reflowed_enemy_city_click_uses_original_target_handler(ui):
