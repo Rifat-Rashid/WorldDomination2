@@ -157,6 +157,7 @@ class PygameMenuAudio:
         self.samples = {}
         self.slots = {}
         self.paused = False
+        self.muted = False
 
     def sample(self, linkage):
         if linkage not in self.samples:
@@ -185,8 +186,13 @@ class PygameMenuAudio:
 
     def volume(self, sound):
         if sound.channel is not None and self.slots.get(sound.channel) is sound:
-            v, pan = sound.volume/100, sound.pan/100
+            v, pan = (0 if self.muted else sound.volume/100), sound.pan/100
             self.pg.mixer.Channel(sound.channel).set_volume(v*(1-max(pan, 0)), v*(1+min(pan, 0)))
+
+    def set_muted(self, muted):
+        self.muted = bool(muted)
+        for sound in self.slots.values():
+            self.volume(sound)
 
     def stop(self, sound):
         if sound.channel is not None and self.slots.get(sound.channel) is sound:
