@@ -176,3 +176,17 @@ def test_target_marker_keeps_the_same_island_translation_as_its_city():
     for i in range(5):
         assert camera.group(SimpleNamespace(name=f'city{i}'))==i
         assert camera.group(SimpleNamespace(name=f'crosshair{i}'))==i
+
+def test_desktop_style_stock_cell_selects_weapon_after_scrolling(ui):
+    from wd2.runtime import U
+    menu=ui.menu;menu.press('btn5');ui.draw()
+    for offset in range(0,round(ui.equipment.limit)+61,60):
+        ui.equipment.offset=min(ui.equipment.limit,offset);ui.draw()
+        cell=next((rect for name,rect in ui.equipment_cells if name=='soldier1' and rect.h==36),None)
+        if cell is not None:break
+    assert cell is not None and ui.stock.contains(cell)
+    # Tap the right-hand round selector area of the full-width equipment cell.
+    tap(ui,(cell.right-8,cell.centery))
+    selected=get(menu.model,'userSelectedWeapon')
+    assert selected is not U and get(selected,'weaponName')=='soldier1'
+    assert get(menu.model,'userSelectedActionBtn')=='attack'

@@ -303,31 +303,30 @@ class LandscapeUI:
         rows=[];y=0
         for group,members in sections:
             columns=1 if group==3 else 2
-            height=26+math.ceil(len(members)/columns)*36+6
-            rows.append((group,members,columns,y,height));y+=height+5
+            height=23+math.ceil(len(members)/columns)*36+5
+            rows.append((group,members,columns,y,height));y+=height+3
         pane=self.equipment;pane.limit=max(0,y-self.stock.h);pane.move(0)
         previous=screen.get_clip();screen.set_clip(self.stock)
         for group,members,columns,offset,height in rows:
             card=pg.Rect(self.stock.x,self.stock.y+offset-round(pane.offset),self.stock.w-8,height)
             if not card.colliderect(self.stock):continue
-            self.panel(screen,card)
-            self.label(screen,self.groups[group-1],pg.Rect(card.x+37,card.y+3,card.w-44,22),12)
-            icon=('rocket','plane','ship','warhead','bio','attack','spy','defense')[group-1]
-            screen.blit(self.skin.icon(icon,30),(card.x+5,card.y+27))
-            body_x=card.x+38;body_w=card.w-43
+            self.skin.inventory_card(screen,card,self.groups[group-1],self.font(11))
+            body_x=card.x+8;body_w=card.w-16
             for index,item in enumerate(members):
                 # Source rows alternate columns rather than sorting by label.
                 if columns==2:
                     row=index%2 if len(members)>2 else 0
                     col=index//2 if len(members)>2 else index
                 else:row=index;col=0
-                rect=pg.Rect(body_x+col*body_w/columns,card.y+25+row*36,body_w/columns,36)
+                rect=pg.Rect(body_x+col*body_w/columns,card.y+22+row*36,body_w/columns,36)
                 amount=get(item,'_stockAmount');enabled=amount is not U and amount>=0
                 color=(219,231,236) if enabled else (122,145,155)
-                count=pg.Rect(rect.right-24,rect.y+5,22,24)
-                self.skin.well(screen,count)
+                switch=pg.Rect(rect.right-16,rect.centery-8,16,16)
+                count=pg.Rect(switch.x-26,rect.centery-10,24,20)
+                self.skin.inventory_counter(screen,count)
                 self.label(screen,str(amount) if enabled else '-',count,12,color,center=True)
-                self.label(screen,str(get(item,'label')),pg.Rect(rect.x+1,rect.y,rect.w-27,rect.h),10,color)
+                self.skin.inventory_switch(screen,switch,get(item,'state'))
+                self.label(screen,str(get(item,'label')),pg.Rect(rect.x+1,rect.y,count.x-rect.x-3,rect.h),10,color)
                 path=control_path(get(item,'overlayMC').node)
                 hit=rect.clip(self.stock)
                 self.targets.append((hit,lambda path=path:self.menu.press(path)))
