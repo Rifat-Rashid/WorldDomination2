@@ -16,7 +16,7 @@ class IslandCamera:
         self.scale=min(rect.w/800,rect.h/600)
         self.margin=(rect.w-800*self.scale)/2
         self.offset=(rect.x+self.margin,rect.y+(rect.h-600*self.scale)/2)
-        self.city_groups={f'city{get(c,"cityID")}':i for i,p in enumerate(menu.game.players) for c in get(p,'cityArr')}
+        self.city_groups={prefix+str(get(c,"cityID")):i for i,p in enumerate(menu.game.players) for c in get(p,'cityArr') for prefix in ('city','crosshair')}
         self.hits=[]
         for i,player in enumerate(menu.game.players):
             for city in get(player,'cityArr'):

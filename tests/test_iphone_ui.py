@@ -165,3 +165,14 @@ def test_settled_action_tube_uses_one_authored_label(ui):
     pixels=[frame.get_at((xx,yy)) for yy in range(y,y+h) for xx in range(x,x+w)]
     assert any(p.g>150 and p.r<100 for p in pixels)
     assert not any(p.r>180 and 130<p.g<230 and p.b<90 for p in pixels)
+
+def test_target_marker_keeps_the_same_island_translation_as_its_city():
+    from types import SimpleNamespace
+    from wd2.iphone_map import IslandCamera
+    from wd2.runtime import obj,arr
+    players=arr([obj({'cityArr':arr([obj({'cityID':i})])}) for i in range(5)])
+    menu=SimpleNamespace(game=SimpleNamespace(players=players),gameplay=SimpleNamespace(city_clips={}))
+    camera=IslandCamera(pygame.Rect(0,0,400,240),menu)
+    for i in range(5):
+        assert camera.group(SimpleNamespace(name=f'city{i}'))==i
+        assert camera.group(SimpleNamespace(name=f'crosshair{i}'))==i
