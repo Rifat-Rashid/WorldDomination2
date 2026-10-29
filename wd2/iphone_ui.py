@@ -141,7 +141,21 @@ class LandscapeUI:
         if not hasattr(self,'skin'):self.skin=MobileSkin(m,pg)
         if not hasattr(self,'hud_cache') or self.hud_cache.renderer is not m.renderer:
             self.hud_cache=SurfaceRenderer(m.renderer,pg)
-        original=self.hud_cache.frame(m.tree)
+        action=get(m.model,'userSelectedActionBtn')
+        center=get(m.gameplay.interface,'centerScreen').node
+        if action!=getattr(self,'last_action',None):
+            self.details_open=action in ('production','research','diplomacy','help')
+            self.last_action=action
+        details=not m.playback and center.frame!=1 and getattr(self,'details_open',False)
+        # Mobile paints its own map. Exclude it from the source HUD pass rather
+        # than rasterizing the same animated battle a second time off-screen.
+        hud=copy(m.tree)
+        hud.children={d:n for d,n in m.tree.children.items() if n.name!='battleMC'}
+        if not details:
+            interface=copy(m.gameplay.interface.node)
+            interface.children={d:n for d,n in interface.children.items() if n.name!='centerScreen'}
+            hud.children[interface.depth]=interface
+        original=self.hud_cache.frame(hud)
         self.panel(screen,self.content)
         logo=pg.Rect(self.left.x,self.left.y,self.left.w,62)
         self.skin.panel(screen,logo)
@@ -150,19 +164,13 @@ class LandscapeUI:
         self.draw_navigation(screen,original)
         self.draw_equipment(screen,original)
         self.panel(screen,self.map_frame)
-        self.draw_map(screen)
         # Simple actions keep the map visible. Complex source workflows are
         # available in a deliberate drawer instead of replacing the whole map.
-        action=get(m.model,'userSelectedActionBtn')
-        center=get(m.gameplay.interface,'centerScreen').node
-        if action!=getattr(self,'last_action',None):
-            self.details_open=action in ('production','research','diplomacy','help')
-            self.last_action=action
-        if not m.playback and center.frame!=1 and getattr(self,'details_open',False):
-            self.panel(screen,self.map_frame)
+        if details:
             self.patch(screen,original,(205,135,365,275),self.map)
             back=pg.Rect(self.map.right-52,self.map.y+2,50,22)
             self.button(screen,back,'MAP',lambda:setattr(self,'details_open',False))
+        else:self.draw_map(screen)
         self.draw_footer(screen,original)
         return pg.transform.smoothscale(screen,self.size)
 
@@ -303,31 +311,32 @@ class LandscapeUI:
         rows=[];y=0
         for group,members in sections:
             columns=1 if group==3 else 2
-            height=26+math.ceil(len(members)/columns)*36+6
-            rows.append((group,members,columns,y,height));y+=height+5
+            height=23+math.ceil(len(members)/columns)*36+5
+            rows.append((group,members,columns,y,height));y+=height+3
         pane=self.equipment;pane.limit=max(0,y-self.stock.h);pane.move(0)
         previous=screen.get_clip();screen.set_clip(self.stock)
         for group,members,columns,offset,height in rows:
             card=pg.Rect(self.stock.x,self.stock.y+offset-round(pane.offset),self.stock.w-8,height)
             if not card.colliderect(self.stock):continue
-            self.panel(screen,card)
-            self.label(screen,self.groups[group-1],pg.Rect(card.x+37,card.y+3,card.w-44,22),12)
-            icon=('rocket','plane','ship','warhead','bio','attack','spy','defense')[group-1]
-            screen.blit(self.skin.icon(icon,30),(card.x+5,card.y+27))
-            body_x=card.x+38;body_w=card.w-43
+            self.skin.inventory_card(screen,card,self.groups[group-1],self.font(11))
+            body_x=card.x+8;body_w=card.w-16
             for index,item in enumerate(members):
                 # Source rows alternate columns rather than sorting by label.
                 if columns==2:
                     row=index%2 if len(members)>2 else 0
                     col=index//2 if len(members)>2 else index
                 else:row=index;col=0
-                rect=pg.Rect(body_x+col*body_w/columns,card.y+25+row*36,body_w/columns,36)
+                gap=10 if columns==2 else 0
+                cell_w=(body_w-gap)/columns
+                rect=pg.Rect(body_x+col*(cell_w+gap),card.y+22+row*36,cell_w,36)
                 amount=get(item,'_stockAmount');enabled=amount is not U and amount>=0
                 color=(219,231,236) if enabled else (122,145,155)
-                count=pg.Rect(rect.right-24,rect.y+5,22,24)
-                self.skin.well(screen,count)
+                switch=pg.Rect(rect.right-14,rect.centery-7,14,14)
+                count=pg.Rect(switch.x-27,rect.centery-10,22,20)
+                self.skin.inventory_counter(screen,count)
                 self.label(screen,str(amount) if enabled else '-',count,12,color,center=True)
-                self.label(screen,str(get(item,'label')),pg.Rect(rect.x+1,rect.y,rect.w-27,rect.h),10,color)
+                self.skin.inventory_switch(screen,switch,get(item,'state'))
+                self.label(screen,str(get(item,'label')),pg.Rect(rect.x,rect.y,count.x-rect.x-5,rect.h),10,color)
                 path=control_path(get(item,'overlayMC').node)
                 hit=rect.clip(self.stock)
                 self.targets.append((hit,lambda path=path:self.menu.press(path)))

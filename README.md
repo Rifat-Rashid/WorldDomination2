@@ -105,6 +105,8 @@ or use the mouse wheel; tap an item to select it. Textured metallic frames,
 navigation icons, grouped equipment cards, score and original action tubes
 follow the landscape layout. Islands and cities keep uniform scaling, with
 wider ocean spacing and matching target coordinates.
+Equipment cards use the original desktop stock screens and round selector
+buttons inside the independently scrolling pane.
 
 Simple actions use a compact accept/cancel strip so the map stays visible.
 **Details** opens the original action panel; **Map** closes the drawer. Production,

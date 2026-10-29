@@ -1,7 +1,9 @@
 """Mobile-only metallic chrome and vector pictograms over reviewed game assets."""
 import math
 from copy import copy
-from .display_list import Matrix
+from .display_list import Matrix, MovieClip
+from .runtime import get, U
+import io
 
 
 class MobileSkin:
@@ -23,6 +25,21 @@ class MobileSkin:
         self.cache = {}
         self.icons = {}
         self.texture = self.crop((45, 4, 110, 12)).copy()
+        stock=next(b for b in get(menu.gameplay.hud,'stockBtn_arr') if b is not U)
+        def widget(symbol,frame,size):
+            node=MovieClip(menu.document.symbols,symbol)
+            node.goto_and_stop(frame)
+            for child in node.walk():
+                if child.symbol.kind==37:child.as2_text={'text':''}
+            x0,y0,x1,y1=menu.renderer.control_bounds(node)
+            scale=min(size[0]/(x1-x0),size[1]/(y1-y0))
+            node.matrix=Matrix(a=scale,d=scale,tx=-x0*scale+(size[0]-(x1-x0)*scale)/2,
+                               ty=-y0*scale+(size[1]-(y1-y0)*scale)/2)
+            return pg.image.load(io.BytesIO(menu.renderer.png(node,size,None))).convert_alpha()
+        switch=get(stock,'btnSwitch').node
+        self.stock_switches={frame:widget(switch.character_id,frame,(48,48)) for frame in (1,2,3)}
+        counter=get(stock,'scrn').node
+        self.stock_counter=widget(counter.character_id,1,(72,60))
 
     def crop(self, rect):
         x,y,w,h = rect
@@ -87,6 +104,31 @@ class MobileSkin:
             color=(round(22*(1-f)),round(43*(1-f)+5),round(50*(1-f)+7))
             pg.draw.line(screen,color,(inner.x,inner.y+y),(inner.right-1,inner.y+y))
         pg.draw.line(screen,(121,152,163),(rect.x+4,rect.y+1),(rect.right-4,rect.y+1))
+
+    def inventory_card(self,screen,rect,title,font):
+        """Desktop inventory frame: shallow title rail and brushed steel body."""
+        pg=self.pg
+        self.panel(screen,rect)
+        inner=rect.inflate(-9,-9)
+        previous=screen.get_clip();screen.set_clip(previous.clip(inner))
+        tile=pg.transform.smoothscale(self.texture,(160,14))
+        for y in range(inner.y,inner.bottom,14):
+            for x in range(inner.x,inner.right,160):screen.blit(tile,(x,y))
+        tint=pg.Surface(inner.size,pg.SRCALPHA);tint.fill((2,24,35,65));screen.blit(tint,inner)
+        screen.set_clip(previous)
+        label=font.render(title,True,(209,220,224));heading=label.get_rect(center=(rect.centerx,rect.y+12))
+        screen.blit(label,heading)
+        for left,right in ((rect.x+10,heading.x-6),(heading.right+6,rect.right-10)):
+            if right>left:
+                pg.draw.line(screen,(115,141,152),(left,rect.y+12),(right,rect.y+12))
+                pg.draw.line(screen,(15,28,34),(left,rect.y+13),(right,rect.y+13))
+
+    def inventory_counter(self,screen,rect):
+        screen.blit(self.pg.transform.smoothscale(self.stock_counter,rect.size),rect)
+
+    def inventory_switch(self,screen,rect,state):
+        frame=int(state) if state in (1,2,3) else 1
+        screen.blit(self.pg.transform.smoothscale(self.stock_switches[frame],rect.size),rect)
 
     def icon(self,name,size,color=(225,233,235)):
         key=(name,size,color)
