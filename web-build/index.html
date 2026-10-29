@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-title" content="World Domination 2">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+<title>World Domination 2</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#050c11;color:#e9f0f1;font:16px system-ui;overflow:hidden}
+main{height:100%;display:flex;align-items:center;justify-content:center}
+canvas{max-width:100%;max-height:100%;touch-action:none;object-fit:contain}
+#status{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:#081720;padding:2rem;z-index:3}
+#status[hidden]{display:none}button{font:inherit;padding:.8rem 1.4rem;background:#db7100;color:white;border:1px solid #ffab4d;border-radius:.4rem}
+#rotate{display:none;position:fixed;inset:0;background:#081720;color:white;align-items:center;justify-content:center;text-align:center;padding:2rem;z-index:2}
+@media (orientation:portrait) and (pointer:coarse){#rotate{display:flex}}
+</style></head><body><main><canvas id="canvas" tabindex="0"></canvas></main>
+<div id="rotate">Rotate your phone to landscape to play.</div>
+<div id="status"><div><p id="message">Loading game and assets…</p><button id="start" hidden>Start game</button></div></div>
+<script src="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.js"></script>
+<script type="module" src="app.js"></script></body></html>

@@ -3370,6 +3370,7 @@
   "tests/test_runtime_assets.py",
   "tests/test_setup_menu.py",
   "tests/test_surface_renderer.py",
+  "tests/test_web_build.py",
   "tools/check_public_tree.py",
   "wd2/__init__.py",
   "wd2/action_entry.py",
@@ -3796,5 +3797,13 @@
   "wd2/surface_renderer.py",
   "wd2/swf_bits.py",
   "wd2/swf_scene.py",
-  "wd2/text_entry.py"
+  "wd2/text_entry.py",
+  "web-build/README.md",
+  "web-build/app.js",
+  "web-build/browser_game.py",
+  "web-build/build.py",
+  "web-build/icon.png",
+  "web-build/index.html",
+  "web-build/serve.py",
+  "web-build/verify_assets.py"
 ]
