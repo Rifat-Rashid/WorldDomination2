@@ -102,7 +102,7 @@ python iphone_build.py --start-game --width 896 --height 414
 This separate launcher reflows gameplay into independently scrolling navigation
 and equipment panels around the five-island map. Drag either sidebar
 or use the mouse wheel; tap an item to select it. Textured metallic frames,
-navigation icons, grouped equipment cards, score and original action tubes
+navigation buttons, grouped equipment cards, score and original action tubes
 follow the landscape layout. Islands and cities keep uniform scaling, with
 wider ocean spacing and matching target coordinates.
 Equipment cards use the original desktop stock screens and round selector
