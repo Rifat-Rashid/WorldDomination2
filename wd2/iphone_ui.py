@@ -144,7 +144,7 @@ class LandscapeUI:
         action=get(m.model,'userSelectedActionBtn')
         center=get(m.gameplay.interface,'centerScreen').node
         if action!=getattr(self,'last_action',None):
-            self.details_open=action in ('production','research','diplomacy','help')
+            self.details_open=action in ('resources','production','research','diplomacy','help')
             self.last_action=action
         details=not m.playback and center.frame!=1 and getattr(self,'details_open',False)
         # Mobile paints its own map. Exclude it from the source HUD pass rather
@@ -168,8 +168,9 @@ class LandscapeUI:
         # available in a deliberate drawer instead of replacing the whole map.
         if details:
             self.patch(screen,original,(205,135,365,275),self.map)
-            back=pg.Rect(self.map.right-52,self.map.y+2,50,22)
-            self.button(screen,back,'MAP',lambda:setattr(self,'details_open',False))
+            if action!='resources':
+                back=pg.Rect(self.map.right-52,self.map.y+2,50,22)
+                self.button(screen,back,'MAP',lambda:setattr(self,'details_open',False))
         else:self.draw_map(screen)
         self.draw_footer(screen,original)
         return pg.transform.smoothscale(screen,self.size)
@@ -265,7 +266,10 @@ class LandscapeUI:
 
     def choose_action(self,index):
         action=('resources','production','research','religion','attack','preAttack','defense','propaganda','diplomacy')[index]
-        if get(self.menu.model,'userSelectedActionBtn')==action:
+        if action=='resources':
+            # Keep the original open/cancel toggle and resource information.
+            self.menu.press('btn1')
+        elif get(self.menu.model,'userSelectedActionBtn')==action:
             self.details_open=not getattr(self,'details_open',False)
         else:
             self.menu.press(f'btn{index+1}')

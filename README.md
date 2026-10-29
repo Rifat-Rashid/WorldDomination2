@@ -109,9 +109,11 @@ Equipment cards use the original desktop stock screens and round selector
 buttons inside the independently scrolling pane.
 
 Simple actions use a compact accept/cancel strip so the map stays visible.
-**Details** opens the original action panel; **Map** closes the drawer. Production,
-technology, diplomacy and help open their details automatically. Tapping the
-selected navigation item also toggles its details. Filled action tubes show
+**Details** opens the original action panel; **Map** closes other drawers. Resources,
+production, technology, diplomacy and help open their details automatically.
+Resources uses its original information and Accept/Cancel controls, with the
+desktop open/cancel toggle; tapping another selected
+navigation item toggles its details. Filled action tubes show
 queued actions and can cancel them, as in the desktop UI. Original target
 selection and battle playback continue through the same game session.
 
