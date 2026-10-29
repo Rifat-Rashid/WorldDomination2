@@ -190,3 +190,25 @@ def test_desktop_style_stock_cell_selects_weapon_after_scrolling(ui):
     selected=get(menu.model,'userSelectedWeapon')
     assert selected is not U and get(selected,'weaponName')=='soldier1'
     assert get(menu.model,'userSelectedActionBtn')=='attack'
+
+
+def test_source_hud_never_renders_a_duplicate_map_and_drawer_skips_hidden_map(ui,monkeypatch):
+    original=ui.hud_cache.frame;views=[]
+    def capture(root,*args,**kwargs):
+        views.append(root)
+        return original(root,*args,**kwargs)
+    monkeypatch.setattr(ui.hud_cache,'frame',capture)
+    state=ui.menu.game.snapshot();rng=ui.menu.rt.rng.getstate()
+    ui.draw()
+    assert all(n.name!='battleMC' for n in views[-1].ordered())
+    assert views[-1].named('interfaceMC').named('centerScreen') is None
+    assert ui.menu.tree.named('battleMC').visible
+    assert ui.menu.tree.named('interfaceMC').named('centerScreen') is not None
+    assert ui.menu.game.snapshot()==state and ui.menu.rt.rng.getstate()==rng
+    ui.menu.press('btn3')
+    state=ui.menu.game.snapshot();rng=ui.menu.rt.rng.getstate()
+    def hidden_map():raise AssertionError('Map should not render beneath the opaque details drawer')
+    monkeypatch.setattr(ui,'draw_map',lambda screen:hidden_map())
+    ui.draw()
+    assert views[-1].named('interfaceMC').named('centerScreen') is not None
+    assert ui.menu.game.snapshot()==state and ui.menu.rt.rng.getstate()==rng
