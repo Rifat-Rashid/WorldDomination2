@@ -92,6 +92,13 @@ currently supports one target per carrier attack.
 Use `--seed 42` with either mode for reproducible Python sessions; the legacy
 mode also accepts `--difficulty 0`, `1` or `2`.
 
+### Browser-local prototype
+
+The separate [web build](web-build/README.md) runs the game and AI on the
+player's device. Its first load downloads the game and browser runtime; the
+current session can continue offline after loading. This is experimental and
+physical iPhone Safari verification is still pending.
+
 ### iPhone landscape layout preview
 
 ```sh
