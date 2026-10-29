@@ -19,6 +19,14 @@ def text_font(path, size):
     return ImageFont.truetype(io.BytesIO(read_asset(path)), size)
 
 
+@lru_cache(maxsize=256)
+def font_has_glyph(path, character):
+    """Exported SWF fonts can contain only the glyphs used in static artwork."""
+    font = text_font(path, 32)
+    glyph, missing = font.getmask(character), font.getmask('\U0010ffff')
+    return (glyph.size, bytes(glyph)) != (missing.size, bytes(missing))
+
+
 def font_families(document):
     """Read original DefineFont2/3 names, including glyphless device fonts."""
     if hasattr(document, 'font_families'):
@@ -108,8 +116,8 @@ class MenuRenderer(SceneRenderer):
         fmt = props.get('_textFormat', U)
         size = get(fmt, 'size')
         size = field['size'] if size is U else size
-        font = text_font(str(self.font_path(field['font'], get(fmt, 'font'))), round(size*4))
         text = str(props.get('text', field.get('initial_text', '')))
+        font = text_font(str(self.font_path(field['font'], get(fmt, 'font'), text)), round(size*4))
         width = math.ceil(field['bounds'][1]-field['bounds'][0])-4
         lines = []
         for paragraph in text.split('\n'):
@@ -127,13 +135,23 @@ class MenuRenderer(SceneRenderer):
         visible_lines = max(1, math.floor((height-4)/(size+2)))
         return lines, visible_lines
 
-    def font_path(self, font_id, family=U):
+    def font_path(self, font_id, family=U, text=''):
+        fallback = None
         if family is U and font_id in self.font_paths:
-            return self.font_paths[font_id]
+            path = self.font_paths[font_id]
+            fallback = path
+            if all(c.isspace() or font_has_glyph(str(path), c) for c in text):
+                return path
         requested = self.font_families.get(font_id) if family is U else family
         for sid in sorted(self.font_paths):
+            path = self.font_paths[sid]
             if self.font_families.get(sid) == requested:
-                return self.font_paths[sid]
+                if fallback is None:
+                    fallback = path
+                if all(c.isspace() or font_has_glyph(str(path), c) for c in text):
+                    return path
+        if fallback is not None:
+            return fallback  # Unknown user-entered characters keep the font's missing-glyph marker.
         raise ValueError(f'No extracted font for SWF font {font_id}, family {requested!r}')
 
     def svg(self, root, size=(800, 600), background=(0, 0, 0)):
@@ -170,7 +188,7 @@ class MenuRenderer(SceneRenderer):
             return group
         # A device-font declaration can have no exported glyph file. Resolve its
         # original family to an embedded/exported counterpart, not a system font.
-        font_path = self.font_path(field['font'], get(fmt, 'font'))
+        font_path = self.font_path(field['font'], get(fmt, 'font'), text)
         scroll = max(1, int(props.get('scroll', 1)))
         focused = props.get('_focused', False) and self.host and (self.host.clock.ticks//12) % 2 == 0
         key = (node.character_id, text, font_size, color, font_path.name, scroll, bool(focused), props.get('_caret', 0))
@@ -184,6 +202,8 @@ class MenuRenderer(SceneRenderer):
             draw = ImageDraw.Draw(image)
             if field['align'] == 2:
                 xy, anchor = (width*scale/2, 4*scale), 'mt'
+            elif field['align'] == 1:
+                xy, anchor = ((width-2)*scale, 4*scale), 'rt'
             else:
                 xy, anchor = (2*scale, 4*scale), 'lt'
             lines, count = self.text_metrics(node)

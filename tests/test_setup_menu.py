@@ -10,6 +10,31 @@ from wd2.runtime import get
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_mass_media_values_align_right_and_resolve_missing_dynamic_glyphs():
+    import base64
+    from wd2.menu_renderer import font_has_glyph
+    menu=SetupMenu(0);menu.press('splashScreenMC');menu.press('BTN_allLeaders_screen1');menu.start_game()
+    try:
+        menu.press('btn4');center=get(menu.gameplay.interface,'centerScreen')
+        state=menu.game.snapshot();rng=menu.rt.rng.getstate()
+        menu.png()
+        for name in ('text1','text2','text3'):
+            node=get(center,name).node;field=menu.renderer.fields[node.character_id]
+            assert field['align']==1
+            text=node.as2_text['text'];path=menu.renderer.font_path(field['font'],text=text)
+            assert all(c.isspace() or font_has_glyph(str(path),c) for c in text)
+            cached=next(value for key,value in menu.renderer.text_cache.items() if key[0]==node.character_id and key[1]==text)
+            image=Image.open(io.BytesIO(base64.b64decode(cached[2].split(',',1)[1])))
+            x0,y0,x1,y1=image.getbbox()
+            assert image.width-16<=x1<=image.width-4
+            assert x0>=0 and y1<=image.height
+        assert menu.renderer.font_path(3734,text='+20 %').name.startswith('1_')
+        assert menu.renderer.font_path(4465,text='\U0001f680').name.startswith('1_')
+        assert menu.renderer.font_path(1,'Arial',text='\U0001f680').name.startswith('1_')
+        assert menu.game.snapshot()==state and menu.rt.rng.getstate()==rng
+    finally:menu.audio.close()
+
+
 def test_original_splash_and_leader_callbacks_update_model_and_display_tree():
     menu = SetupMenu(0)
     assert menu.tree.named('splashScreenMC').visible

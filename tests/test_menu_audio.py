@@ -212,3 +212,26 @@ def test_named_stop_cancels_all_matching_voices_without_stopping_theme():
     audio.complete(first); audio.complete(second)
     assert len(backend.starts) == count and rt.rng.getstate() == before
     audio.close()
+
+
+def test_master_mute_silences_existing_and_new_voices_without_pausing():
+    from types import SimpleNamespace
+    calls={}
+    class Channel:
+        def __init__(self,slot):self.slot=slot
+        def set_volume(self,left,right):calls[self.slot]=(left,right)
+    backend=PygameMenuAudio.__new__(PygameMenuAudio)
+    backend.pg=SimpleNamespace(mixer=SimpleNamespace(Channel=Channel))
+    backend.muted=False;backend.paused=False
+    theme=SimpleNamespace(channel=0,volume=80,pan=0,playing=True)
+    effect=SimpleNamespace(channel=1,volume=50,pan=-40,playing=True)
+    backend.slots={0:theme,1:effect}
+    backend.set_muted(True)
+    assert calls=={0:(0,0),1:(0,0)}
+    later=SimpleNamespace(channel=2,volume=90,pan=0,playing=True)
+    backend.slots[2]=later;backend.volume(later)
+    assert calls[2]==(0,0) and not backend.paused
+    backend.set_muted(False)
+    assert calls[0]==pytest.approx((.8,.8)) and calls[1]==pytest.approx((.5,.3))
+    assert calls[2]==pytest.approx((.9,.9))
+    assert theme.playing and effect.playing and later.playing

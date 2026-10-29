@@ -116,6 +116,9 @@ desktop open/cancel toggle; tapping another selected
 navigation item toggles its details. Filled action tubes show
 queued actions and can cancel them, as in the desktop UI. Original target
 selection and battle playback continue through the same game session.
+Detail panels and action tubes render at the output resolution for clearer phone
+text; tubes retain transparent corners. The top-right **Mute/Unmute** button
+controls music and effects together without pausing playback.
 
 Safe areas default to 44 logical points on each side and 21 at the bottom.
 Override them with `--safe-area LEFT TOP RIGHT BOTTOM`. Use `--screenshot PATH`

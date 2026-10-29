@@ -59,6 +59,7 @@ class LandscapeUI:
         self.patches, self.targets = [], []
         self.gesture = None
         self.fonts = {}
+        self._muted = False
         self.resize(size)
 
     def resize(self, size):
@@ -129,6 +130,53 @@ class LandscapeUI:
         screen.set_clip(previous)
         self.patches.append(Patch(source,target,clip.copy()))
 
+    def pixels(self, rect):
+        """Map shared logical edges to output pixels without accumulating gaps."""
+        rect=self.pg.Rect(rect)
+        x,y,right,bottom=(round(v*self.density) for v in (rect.x,rect.y,rect.right,rect.bottom))
+        return self.pg.Rect(x,y,right-x,bottom-y)
+
+    def scene_region(self, screen, nodes, source, target):
+        """Rasterize live authored artwork directly at the destination resolution."""
+        from .surface_renderer import SurfaceRenderer
+        m=self.menu;source=self.pg.Rect(source);target=self.pg.Rect(target)
+        if not hasattr(self,'detail_cache') or self.detail_cache.renderer is not m.renderer:
+            self.detail_cache=SurfaceRenderer(m.renderer,self.pg)
+        interface=SurfaceRenderer.partial(m.gameplay.interface.node,nodes)
+        root=SurfaceRenderer.partial(m.tree,[interface])
+        sx,sy=target.w/source.w,target.h/source.h
+        root.matrix=Matrix(a=sx,d=sy,tx=-source.x*sx,ty=-source.y*sy) @ root.matrix
+        cache=self.detail_cache;cache._signatures={};cache.invalid_transforms=set()
+        sprite,position=cache.paint(root,(),0,target.size)
+        previous=screen.get_clip();screen.set_clip(previous.clip(target))
+        screen.blit(sprite,(target.x+position[0],target.y+position[1]),special_flags=self.pg.BLEND_PREMULTIPLIED)
+        screen.set_clip(previous)
+
+    def draw_details(self, screen, center, action):
+        if action=='religion':
+            # Keep the increase on its own line beneath the authored caption.
+            # These are presentation copies; source text and callbacks stay live.
+            from .runtime import obj
+            center=copy(center);center.children=dict(center.children)
+            value=center.named('text3')
+            if value is not None:
+                value=copy(value);value.as2_text=dict(value.as2_text)
+                value.as2_text['_textFormat']=obj({'font':'Arial','size':16})
+                value.matrix=Matrix(ty=7) @ value.matrix
+                center.children[value.depth]=value
+        source=self.pg.Rect(205,135,365,275)
+        ratio=min(self.map.w/source.w,self.map.h/source.h)
+        target=self.pg.Rect(0,0,round(source.w*ratio),round(source.h*ratio));target.center=self.map.center
+        # Include the HUD's authored border/shading layers over the panel.
+        nodes=[center if n.name=='centerScreen' else n for n in self.menu.gameplay.interface.node.ordered()]
+        self.scene_region(screen,nodes,source,self.pixels(target))
+        self.patches.append(Patch(source,target,self.map.copy()))
+        if action!='resources':
+            back=self.pg.Rect(self.map.right-52,self.map.y+2,50,22)
+            self.skin.button(screen,self.pixels(back))
+            self.label(screen,'MAP',self.pixels(back.inflate(-8,-4)),round(12*self.density),center=True)
+            self.targets.append((back,lambda:setattr(self,'details_open',False)))
+
     def draw(self):
         pg=self.pg;screen=pg.Surface((self.width,self.height));screen.fill((4,9,12))
         self.patches=[];self.targets=[];self.equipment_cells=[]
@@ -151,10 +199,9 @@ class LandscapeUI:
         # than rasterizing the same animated battle a second time off-screen.
         hud=copy(m.tree)
         hud.children={d:n for d,n in m.tree.children.items() if n.name!='battleMC'}
-        if not details:
-            interface=copy(m.gameplay.interface.node)
-            interface.children={d:n for d,n in interface.children.items() if n.name!='centerScreen'}
-            hud.children[interface.depth]=interface
+        interface=copy(m.gameplay.interface.node)
+        interface.children={d:n for d,n in interface.children.items() if n.name not in ('centerScreen','tubeMC1','tubeMC2','actionHatch3')}
+        hud.children[interface.depth]=interface
         original=self.hud_cache.frame(hud)
         self.panel(screen,self.content)
         logo=pg.Rect(self.left.x,self.left.y,self.left.w,62)
@@ -166,14 +213,12 @@ class LandscapeUI:
         self.panel(screen,self.map_frame)
         # Simple actions keep the map visible. Complex source workflows are
         # available in a deliberate drawer instead of replacing the whole map.
-        if details:
-            self.patch(screen,original,(205,135,365,275),self.map)
-            if action!='resources':
-                back=pg.Rect(self.map.right-52,self.map.y+2,50,22)
-                self.button(screen,back,'MAP',lambda:setattr(self,'details_open',False))
-        else:self.draw_map(screen)
+        if not details:self.draw_map(screen)
         self.draw_footer(screen,original)
-        return pg.transform.smoothscale(screen,self.size)
+        output=pg.transform.smoothscale(screen,self.size)
+        if details:self.draw_details(output,center,action)
+        self.draw_actions(output)
+        return output
 
     def draw_portraits(self,screen,original):
         pg=self.pg
@@ -303,7 +348,8 @@ class LandscapeUI:
         pg=self.pg
         toolbar=pg.Rect(self.right.x,self.right.y,self.right.w,34);self.panel(screen,toolbar)
         self.button(screen,pg.Rect(toolbar.x+7,toolbar.y+6,toolbar.w*.35,23),'HELP',lambda:self.menu.press('btn_help'))
-        self.button(screen,pg.Rect(toolbar.x+toolbar.w*.39,toolbar.y+6,toolbar.w*.44,23),'FULL SCREEN',self.toggle_fullscreen)
+        self.mute_rect=pg.Rect(toolbar.x+toolbar.w*.39,toolbar.y+6,toolbar.w*.44,23)
+        self.button(screen,self.mute_rect,'UNMUTE' if self.muted else 'MUTE',self.toggle_mute)
         gear=pg.Rect(toolbar.right-26,toolbar.y+5,23,24)
         screen.blit(self.skin.icon('gear',23),(gear.x,gear.y));self.targets.append((gear,lambda:self.menu.press('btn38')))
         frame=self.stock.inflate(12,10);self.panel(screen,frame)
@@ -386,22 +432,31 @@ class LandscapeUI:
         count=self.score.inflate(-12,-25);count.y+=5;self.skin.well(screen,count)
         self.label(screen,str(round(get(m.game.human,'score'))),count,14,center=True)
         self.panel(screen,self.action_rect,'NEXT ACTION')
+
+    def draw_actions(self,screen):
+        pg=self.pg;m=self.menu
         rect=self.action_rect.inflate(-10,-15);rect.y+=5
         width=round((rect.w-32)/2)
         for i,name in enumerate(('btn44','btn45')):
             target=pg.Rect(rect.x+i*(width+2),rect.y,width,rect.h)
-            self.label(screen,'FIRST ACTION' if i==0 else 'SECOND ACTION',pg.Rect(target.x,target.y,target.w,10),8,center=True)
+            self.label(screen,'FIRST ACTION' if i==0 else 'SECOND ACTION',self.pixels(pg.Rect(target.x,target.y,target.w,10)),round(8*self.density),center=True)
             art=pg.Rect(target.x,target.y+10,target.w,target.h-11)
-            screen.blit(pg.transform.smoothscale(self.crop(original,(216+i*149,544,140,44)),art.size),art)
+            self.scene_region(screen,[get(m.gameplay.interface,f'tubeMC{i+1}').node],(216+i*149,544,140,44),self.pixels(art))
             self.targets.append((target,lambda name=name:m.press(name)))
         confirm=pg.Rect(rect.right-28,rect.y,28,rect.h)
-        self.label(screen,'CONFIRM',pg.Rect(confirm.x-2,confirm.y,32,10),7,center=True)
+        self.label(screen,'CONFIRM',self.pixels(pg.Rect(confirm.x-2,confirm.y,32,10)),round(7*self.density),center=True)
         art=pg.Rect(confirm.x,confirm.y+10,confirm.w,confirm.h-11)
-        screen.blit(pg.transform.smoothscale(self.crop(original,(515,541,47,50)),art.size),art)
+        self.scene_region(screen,[get(m.gameplay.interface,'actionHatch3').node],(515,541,47,50),self.pixels(art))
         self.targets.append((confirm,lambda:m.press('btn46')))
 
-    def toggle_fullscreen(self):
-        self.menu.fullscreen_requested=not self.menu.fullscreen_requested
+    @property
+    def muted(self):
+        return getattr(self.menu.audio.backend,'muted',self._muted)
+
+    def toggle_mute(self):
+        self._muted=not self.muted
+        if self.menu.audio.backend:
+            self.menu.audio.backend.set_muted(self._muted)
 
     def stage(self,point):
         for patch in reversed(self.patches):
@@ -457,7 +512,9 @@ def run(ui):
     screen=pg.display.set_mode(ui.size,pg.RESIZABLE)
     pg.display.set_caption('World Domination II - iPhone landscape preview')
     try:
-        try:m.audio.connect(PygameMenuAudio(m.audio,pg))
+        try:
+            m.audio.connect(PygameMenuAudio(m.audio,pg))
+            m.audio.backend.set_muted(ui._muted)
         except pg.error:pass
         clock=pg.time.Clock();accumulator=0.;running=True;finger=None;fullscreen=False
         while running:

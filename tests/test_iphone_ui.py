@@ -245,5 +245,55 @@ def test_source_hud_never_renders_a_duplicate_map_and_drawer_skips_hidden_map(ui
     def hidden_map():raise AssertionError('Map should not render beneath the opaque details drawer')
     monkeypatch.setattr(ui,'draw_map',lambda screen:hidden_map())
     ui.draw()
-    assert views[-1].named('interfaceMC').named('centerScreen') is not None
+    # The panel is rasterized separately at the final output resolution.
+    assert views[-1].named('interfaceMC').named('centerScreen') is None
+    assert ui.menu.game.snapshot()==state and ui.menu.rt.rng.getstate()==rng
+
+
+def test_phone_details_and_tubes_render_at_output_resolution_without_backplates(ui,monkeypatch):
+    ui.resize((1792,828));ui.menu.press('btn3')
+    before=ui.menu.game.snapshot();rng=ui.menu.rt.rng.getstate()
+    matrices=[n.matrix for n in ui.menu.tree.walk()]
+    calls=[];original=ui.scene_region
+    def capture(screen,nodes,source,target):
+        calls.append(([n.name for n in nodes],pygame.Rect(target)))
+        return original(screen,nodes,source,target)
+    monkeypatch.setattr(ui,'scene_region',capture)
+    frame=ui.draw()
+    detail=next(rect for names,rect in calls if 'centerScreen' in names)
+    assert detail.w>600 and detail.h>450 and frame.get_size()==(1792,828)
+    # Source hit coordinates still reach the research selector after native rendering.
+    for names,rect in calls:
+        if names==['tubeMC1']:
+            # Nothing behind the rounded tube is copied from the black desktop HUD.
+            layer=pygame.Surface(rect.size,pygame.SRCALPHA)
+            node=get(ui.menu.gameplay.interface,'tubeMC1').node
+            original(layer,[node],(216,544,140,44),layer.get_rect())
+            assert layer.get_at((0,0)).a==0
+            assert layer.get_bounding_rect().w>rect.w*.8
+    assert [n.matrix for n in ui.menu.tree.walk()]==matrices
+    assert ui.menu.game.snapshot()==before and ui.menu.rt.rng.getstate()==rng
+    # Repeated rendering hits the cache at the same physical size.
+    rasterizations=ui.detail_cache.rasterizations
+    assert pygame.image.tobytes(ui.draw(),'RGB')==pygame.image.tobytes(frame,'RGB')
+    assert ui.detail_cache.rasterizations==rasterizations
+    selector=ui.menu.gameplay.actions.find('tech1')
+    x0,y0,x1,y1=ui.menu.renderer.control_bounds(selector)
+    patch=next(p for p in ui.patches if getattr(p,'source',None) is not None and p.source.w==365)
+    point=(patch.target.x+((x0+x1)/2-patch.source.x)*patch.target.w/patch.source.w,
+           patch.target.y+((y0+y1)/2-patch.source.y)*patch.target.h/patch.source.h)
+    tap(ui,point)
+    assert len(get(ui.menu.model,'userSelectedResearchArr'))==1
+
+
+def test_mobile_mute_button_preserves_game_and_fullscreen_state(ui):
+    from wd2.menu_audio import PygameMenuAudio
+    backend=PygameMenuAudio(ui.menu.audio,pygame);ui.menu.audio.connect(backend)
+    ui.draw();state=ui.menu.game.snapshot();rng=ui.menu.rt.rng.getstate()
+    fullscreen=ui.menu.fullscreen_requested
+    tap(ui,ui.mute_rect.center);ui.draw()
+    assert backend.muted and ui.muted
+    tap(ui,ui.mute_rect.center);ui.draw()
+    assert not backend.muted and not ui.muted
+    assert ui.menu.fullscreen_requested==fullscreen
     assert ui.menu.game.snapshot()==state and ui.menu.rt.rng.getstate()==rng
