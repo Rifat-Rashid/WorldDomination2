@@ -181,6 +181,10 @@ class OriginalGameplay:
         if owner and owner.interface_sequence:
             owner.interface_sequence.cancel()
             owner.interface_sequence = None
+        # View.changeOver clears transient sound clips before entering battle.
+        # The adapter resolves rules synchronously, so restore that lifecycle
+        # step on the canonical session before copying the presentation model.
+        self.rt.invoke(self.game.presenter, 'remove_played_sound_objects')
         if owner and owner.play_battles:
             from .battle_playback import PresentationSnapshot
             self.game.on_turn_results = lambda game: setattr(owner, '_battle_snapshot', PresentationSnapshot(game))

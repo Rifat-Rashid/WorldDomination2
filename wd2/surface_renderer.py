@@ -34,6 +34,9 @@ class SurfaceLRU:
     def put(self, key, value):
         surface = value[0]
         size = surface.get_pitch()*surface.get_height()
+        old = self.items.pop(key, None)
+        if old is not None:
+            self.bytes -= old[1]
         if size > self.byte_limit or self.limit < 1:
             return
         while self.items and (len(self.items) >= self.limit or self.bytes+size > self.byte_limit):

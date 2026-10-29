@@ -4,6 +4,8 @@ Logical sound commands work without a device for deterministic tests/captures.
 Only the interactive window connects a Pygame backend. No game RNG is involved.
 """
 import io
+import weakref
+from collections import deque
 
 from .runtime import ASObject, NativeClass, U, get, number, string
 from .swf_scene import ROOT
@@ -78,8 +80,8 @@ class MenuAudio:
     def __init__(self, rt, document):
         self.rt = rt
         self.linkages = {s.linkage: sid for sid, s in document.symbols.items() if s.kind == 14 and s.linkage}
-        self.sounds = []
-        self.events = []
+        self._sounds = weakref.WeakValueDictionary()
+        self.events = deque(maxlen=1024)
         self.theme = None
         self.backend = None
         self.paused = False
@@ -101,8 +103,14 @@ class MenuAudio:
 
     def new_sound(self, owner=U):
         sound = MenuSound(self, owner)
-        self.sounds.append(sound)
+        self._sounds[id(sound)] = sound
         return sound
+
+    @property
+    def sounds(self):
+        # Script references and playback channels own sounds. The registry must
+        # not retain discarded sound owners (including completed battle scenes).
+        return list(self._sounds.values())
 
     def connect(self, backend):
         if self.backend:

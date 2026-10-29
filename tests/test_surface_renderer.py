@@ -271,6 +271,34 @@ def test_integer_motion_reuses_registered_raster_and_preserves_fractional_edges(
     assert cache.rasterizations == count
 
 
+def test_surface_cache_replacements_keep_exact_byte_accounting(display):
+    from wd2.surface_renderer import SurfaceLRU
+    cache=SurfaceLRU(3,2048)
+    small=(display.Surface((8,8)),(0,0));large=(display.Surface((16,16)),(0,0))
+    for _ in range(50):cache.put('same',small)
+    assert cache.bytes==small[0].get_pitch()*8
+    cache.put('same',large);cache.put('other',small)
+    assert cache.bytes==sum(size for value,size in cache.items.values())
+    cache.put('same',(display.Surface((100,100)),(0,0)))
+    assert cache.get('same') is None and cache.get('other') is small
+    assert cache.bytes==small[0].get_pitch()*8
+
+
+def test_dynamic_text_cache_is_bounded_and_eviction_preserves_pixels(display):
+    menu=SetupMenu(0);menu.press('splashScreenMC');menu.press('BTN_allLeaders_screen1');menu.start_game();menu.press('btn1')
+    field=get(get(menu.gameplay.interface,'centerScreen'),'textFunds')
+    field.set('text','Budget: 65000000');reference=menu.renderer.png(field.node)
+    before=menu.game.snapshot();rng=menu.rt.rng.getstate()
+    for i in range(320):
+        field.set('text',f'Budget: {i}');menu.renderer.svg(field.node)
+    assert len(menu.renderer.text_cache)<=256
+    assert menu.renderer.text_cache_bytes<=8*1024**2
+    field.set('text','Budget: 65000000')
+    assert menu.renderer.png(field.node)==reference
+    assert menu.game.snapshot()==before and menu.rt.rng.getstate()==rng
+    menu.audio.close()
+
+
 def test_flash_timeline_mask_ignores_alpha_and_color_but_inspector_retains_export_mode(display):
     root = synthetic()
     root.apply(Operation(1, {'character_id': 1, 'clip_depth': 2,

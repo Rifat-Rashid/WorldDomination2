@@ -201,7 +201,9 @@ class LandscapeUI:
         m=self.menu;scene=m.active_scene
         battle=m.playback.battle.node if m.playback else m.gameplay.battle.node
         if not hasattr(self,'map_cache') or self.map_cache.renderer is not scene.renderer:
-            self.map_cache=SurfaceRenderer(scene.renderer,self.pg)
+            # Keep the animated island cycle resident without changing the
+            # renderer's byte budget; 512 entries repeatedly evicted it.
+            self.map_cache=SurfaceRenderer(scene.renderer,self.pg,layer_entries=2048)
         self.camera=IslandCamera(self.map,m)
         view=self.camera.tree(battle)
         # The original water symbol contains only inter-island strips, so lay
@@ -214,6 +216,7 @@ class LandscapeUI:
         size=(self.map.w*2,self.map.h*2)
         layer=pg.Surface(size,pg.SRCALPHA)
         terrain=getattr(self,'terrain_cache',{})
+        current_terrain={}
         for node in view.ordered():
             if not node.name.startswith('land0'):continue
             key=(self.map.size,self.map_cache.signature(node),view.matrix)
@@ -234,9 +237,10 @@ class LandscapeUI:
                 mask=mask.filter(ImageFilter.MedianFilter(3))
                 image=Image.merge('RGBA',tuple(ImageChops.multiply(band,mask) for band in image.split()))
                 terrain[key]=(pg.image.frombytes(image.tobytes(),image.size,'RGBA'),position)
+            current_terrain[key]=terrain[key]
             sprite,position=terrain[key];layer.blit(sprite,position,special_flags=pg.BLEND_PREMULTIPLIED)
         # Keep only the current camera's terrain entries (bounded across resize).
-        self.terrain_cache={key:value for key,value in terrain.items() if key[0]==self.map.size}
+        self.terrain_cache=current_terrain
         overlay=copy(view)
         overlay.children={n.depth:n for n in view.ordered() if not n.name.startswith('land0') and n.character_id not in (5259,5260) and not n.name.startswith(('water_overlay_','citypos','swp','twp'))}
         sprite,position=self.map_cache.paint(overlay,(),0,size)

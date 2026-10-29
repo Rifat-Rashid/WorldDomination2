@@ -320,7 +320,7 @@ def test_original_tube_hover_audio_clock_and_render_purity(menu):
     snapshot, rng = menu.game.snapshot(), menu.rt.rng.getstate()
     menu.png(); menu.png(); menu.host.clock.step(24)
     assert menu.game.snapshot() == snapshot and menu.rt.rng.getstate() == rng
-    assert any(s.linkage.endswith('openactiondevice.wav') for s in menu.audio.sounds)
+    assert any(e.get('event')=='start' and str(e.get('linkage')).endswith('openactiondevice.wav') for e in menu.audio.events)
 
 
 def test_research_resolves_original_technology_and_resources(menu):
