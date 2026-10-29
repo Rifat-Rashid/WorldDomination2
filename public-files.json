@@ -3777,6 +3777,8 @@
   "wd2/generated/script_395.py",
   "wd2/host.py",
   "wd2/interface_sequence.py",
+  "wd2/iphone_map.py",
+  "wd2/iphone_skin.py",
   "wd2/iphone_ui.py",
   "wd2/lifecycle.py",
   "wd2/menu_audio.py",

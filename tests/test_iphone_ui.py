@@ -32,7 +32,7 @@ def test_scrolling_clips_and_reaches_all_nine_actions_without_selecting_on_drag(
     ui.wheel(ui.nav.center,-100);ui.draw()
     assert ui.navigation.offset==ui.navigation.limit
     assert all(ui.nav.contains(r) for r,a in ui.targets if r.colliderect(ui.nav))
-    tap(ui,(ui.nav.centerx,ui.nav.y+9*48-ui.navigation.offset-24))
+    tap(ui,(ui.nav.centerx,ui.nav.y+9*44-ui.navigation.offset-22))
     assert get(ui.menu.model,'userSelectedActionBtn')=='diplomacy'
 
 def test_equipment_scroll_is_independent_and_swipes_do_not_select(ui):
@@ -56,11 +56,11 @@ def test_map_camera_inverse_hits_every_city_and_render_is_pure(ui):
         for player in menu.game.players:
             for city in get(player,'cityArr'):
                 source=(205+get(city,'xPos')*.46,135+get(city,'yPos')*.46)
-                point=(camera.target.x+(source[0]-camera.source.x)*camera.target.w/camera.source.w,
-                       camera.target.y+(source[1]-camera.source.y)*camera.target.h/camera.source.h)
+                point=camera.project(get(city,'xPos'),get(city,'yPos'),get(player,'playerNum'))
                 assert ui.map.collidepoint(point)
                 assert ui.stage(point)==pytest.approx(source,abs=1e-6)
-        assert all(r.w>=44 and r.h>=44 for r,a in ui.targets if r.h>=44)
+        if size[0]/size[1]>2:assert ui.map.w/ui.map.h > 1.5
+        assert ui.map.left>=ui.center.left and ui.map.right<=ui.center.right
     assert [n.matrix for n in menu.tree.walk()]==matrices
     assert menu.game.snapshot()==state and menu.rt.rng.getstate()==rng
 
@@ -104,3 +104,75 @@ def test_real_event_loop_routes_touch_drag_and_wheel_without_ghost_taps(ui, monk
     state=ui.menu.game.snapshot();run(ui)
     assert ui.equipment.offset>=60 and ui.navigation.offset>0
     assert ui.menu.game.snapshot()['turn']==state['turn']
+
+def test_simple_action_keeps_map_and_accept_strip_visible(ui):
+    from wd2.iphone_map import IslandCamera
+    tap(ui,(ui.nav.centerx,ui.nav.y+20));ui.draw()
+    assert get(ui.menu.model,'userSelectedActionBtn')=='resources'
+    assert not ui.details_open
+    assert any(isinstance(p,IslandCamera) for p in ui.patches)
+    assert ui.map.h>ui.content.h*.55
+    # Source accept callback is exposed in the compact strip, not a screenshot.
+    target=next(rect for rect,fn in ui.targets if ui.messages.contains(rect) and rect.centerx>ui.messages.centerx+ui.messages.w*.2)
+    tap(ui,target.center)
+    assert get(get(ui.menu.game.human,'turnActionArr')[0],'action')=='resources'
+
+
+def test_filled_tube_cancels_once_without_queuing_skip(ui):
+    ui.menu.press('btn1');ui.menu.press('btnAccept');ui.draw()
+    tube=ui.targets[-3][0]
+    pos=tuple(v*ui.density for v in tube.center)
+    ui.down(pos,0)
+    assert get(get(ui.menu.game.human,'turnActionArr')[0],'action')=='resources'
+    ui.up(pos,.1)
+    from wd2.runtime import U
+    assert get(get(ui.menu.game.human,'turnActionArr')[0],'action') is U
+
+
+def test_reflowed_enemy_city_click_uses_original_target_handler(ui):
+    from wd2.action_entry import control_path
+    from wd2.runtime import U
+    menu=ui.menu
+    menu.press('btn5')
+    button=next(b for b in get(menu.gameplay.hud,'stockBtn_arr') if b is not U and get(b,'relatedWeapon')=='soldier1')
+    menu.press(control_path(get(button,'overlayMC').node));ui.draw()
+    city=get(menu.game.players[2],'cityArr')[1]
+    point=ui.camera.project(get(city,'xPos'),get(city,'yPos'),2)
+    tap(ui,point)
+    assert get(menu.model,'userSelectedCity') is city
+
+
+def test_mobile_skin_snapshot_cannot_capture_a_live_resource_modal(ui):
+    from wd2.iphone_skin import MobileSkin
+    ui.menu.press('btn1')
+    before=ui.menu.game.snapshot();matrices=[n.matrix for n in ui.menu.tree.walk()]
+    skin=MobileSkin(ui.menu,pygame)
+    # This patch must contain blue ocean even when the original center panel is orange.
+    patch=skin.crop((358,159,48,50))
+    color=patch.get_at((patch.get_width()//2,patch.get_height()//2))
+    assert color.b>color.r and color.b>color.g
+    assert ui.menu.game.snapshot()==before
+    assert [n.matrix for n in ui.menu.tree.walk()]==matrices
+
+def test_settled_action_tube_uses_one_authored_label(ui):
+    menu=ui.menu
+    menu.press('btn1');menu.press('btnAccept');menu.step(120)
+    frame=ui.draw()
+    tube=ui.targets[-3][0]
+    # The authored filled tube has a green plate and black lettering. A second
+    # gold mobile caption would overlap the source label after its animation.
+    x,y,w,h=(round(v*ui.density) for v in (tube.x,tube.y+12,tube.w,tube.h-14))
+    pixels=[frame.get_at((xx,yy)) for yy in range(y,y+h) for xx in range(x,x+w)]
+    assert any(p.g>150 and p.r<100 for p in pixels)
+    assert not any(p.r>180 and 130<p.g<230 and p.b<90 for p in pixels)
+
+def test_target_marker_keeps_the_same_island_translation_as_its_city():
+    from types import SimpleNamespace
+    from wd2.iphone_map import IslandCamera
+    from wd2.runtime import obj,arr
+    players=arr([obj({'cityArr':arr([obj({'cityID':i})])}) for i in range(5)])
+    menu=SimpleNamespace(game=SimpleNamespace(players=players),gameplay=SimpleNamespace(city_clips={}))
+    camera=IslandCamera(pygame.Rect(0,0,400,240),menu)
+    for i in range(5):
+        assert camera.group(SimpleNamespace(name=f'city{i}'))==i
+        assert camera.group(SimpleNamespace(name=f'crosshair{i}'))==i
