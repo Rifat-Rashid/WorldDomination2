@@ -255,9 +255,7 @@ class LandscapeUI:
             if not rect.colliderect(self.nav):continue
             selected=get(self.menu.model,'userSelectedActionBtn')==actions[i]
             self.skin.button(screen,rect,selected)
-            icon_rect=pg.Rect(rect.x+4,rect.y+5,30,30)
-            screen.blit(self.skin.icon(actions[i],28),(icon_rect.x,icon_rect.y))
-            self.label(screen,label.upper(),pg.Rect(rect.x+38,rect.y,rect.w-42,rect.h),12)
+            self.label(screen,label.upper(),rect.inflate(-12,0),12,center=True)
             self.targets.append((rect.clip(self.nav),lambda i=i:self.choose_action(i)))
         screen.set_clip(previous)
         self.scrollbar(screen,self.nav,pane,len(self.labels)*row)
