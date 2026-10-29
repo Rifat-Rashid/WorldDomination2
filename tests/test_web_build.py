@@ -43,8 +43,11 @@ def test_local_server_only_serves_the_intended_browser_files(built,tmp_path):
             page=response.read().decode('utf-8')
             assert response.headers.get_content_type()=='text/html'
             assert 'apple-touch-icon' in page
+            assert '<progress id="progress"' in page
+            assert 'id="start"' not in page
         with urlopen(base+'/dist/game.zip',timeout=5) as response:
             assert response.headers.get_content_type()=='application/zip'
+            assert int(response.headers['Content-Length'])==(built[0]/'game.zip').stat().st_size
             assert response.read(4)==b'PK\x03\x04'
         for path in ('/AGENTS.md','/build.py','/analysis/PROGRESS.md','/wd2/runtime.py'):
             with pytest.raises(HTTPError) as error:urlopen(base+path,timeout=5)

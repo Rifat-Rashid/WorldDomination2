@@ -10,13 +10,13 @@ python web-build/verify_assets.py
 python web-build/serve.py
 ```
 
-Open `http://127.0.0.1:8768` in a browser. Wait for **Ready to play**, then
-press **Start game**. Phones use the landscape layout; a mouse-oriented device
+Open `http://127.0.0.1:8768` in a browser. The title screen appears as soon as
+loading finishes. Phones use the landscape layout; a mouse-oriented device
 uses the original desktop layout. Add `?mode=mobile` or `?mode=desktop` to
-override detection. Sound starts after the Start game gesture.
+override detection. Sound is enabled by the first touch, click or key press.
 
 The first load needs the generated game archive (approximately 45 MB) plus the
-Python and SVG WebAssembly runtimes from jsDelivr. Once Ready to play appears,
+Python and SVG WebAssembly runtimes from jsDelivr. Once the title screen appears,
 the current session can continue offline. Reloading the page requires a network
 connection. The game archive is generated in `web-build/dist/` and is not
 committed.

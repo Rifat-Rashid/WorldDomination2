@@ -115,7 +115,7 @@ async def run():
     menu=SetupMenu(0);menu.play_battles=True
     menu.audio.connect(BrowserAudio(menu.audio))
     if mobile:ui=BrowserLandscapeUI(menu,size)
-    accumulator=0.;previous=time.monotonic()
+    accumulator=0.;previous=time.monotonic();first_frame=True
     while True:
         now=time.monotonic();dt=min(now-previous,.25);previous=now
         accumulator+=dt*24;ticks=int(accumulator);accumulator-=ticks
@@ -123,4 +123,6 @@ async def run():
         if ui:ui.step(dt);frame=ui.draw()
         else:frame=menu.surface(pygame)
         screen.blit(frame,(0,0));pygame.display.flip()
+        if first_frame:
+            js.gameReady();first_frame=False
         await asyncio.sleep(0)
