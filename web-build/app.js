@@ -82,6 +82,8 @@ async function load() {
         const Audio=window.AudioContext||window.webkitAudioContext;
         if(!Audio)throw Error('Browser audio is unavailable');
         context=new Audio();master=context.createGain();master.connect(context.destination);
+        const unlock=context.createBufferSource();unlock.buffer=context.createBuffer(1,1,context.sampleRate);
+        unlock.connect(master);unlock.start();
         context.resume().catch(error=>console.error('Audio start:',error));status.hidden=true;canvas.focus();
         await runtime.runPythonAsync('await browser_game.run()');
       }
